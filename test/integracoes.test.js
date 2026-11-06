@@ -163,20 +163,21 @@ test("consulta e normaliza o catálogo TUSS com busca e paginação", async () =
   let urlConsultada;
   global.fetch = async url => {
     urlConsultada = new URL(url);
-    return new Response(JSON.stringify({
-      results: [{ concept_code: "40304361", display_name: "Hemograma completo", source: "TUSS 22" }],
-      total: 1
-    }), { status: 200 });
+    return new Response(JSON.stringify([
+      { id: "40304361", display_name: "Hemograma completo", source: "TUSS 22" }
+    ]), { status: 200, headers: { "num_found": "1", "pages": "1", "page_number": "2" } });
   };
 
   const resultado = await buscarCatalogoExames({ termo: "hemograma", pagina: 2, limite: 10 });
   assert.equal(urlConsultada.searchParams.get("q"), "hemograma");
   assert.equal(urlConsultada.searchParams.get("page"), "2");
-  assert.equal(urlConsultada.searchParams.get("page_size"), "10");
+  assert.equal(urlConsultada.searchParams.get("limit"), "10");
   assert.equal(resultado.dados[0].codigo, "40304361");
   assert.equal(resultado.dados[0].descricao, "Hemograma completo");
   assert.equal(resultado.dados[0].tabela, "TUSS 22");
   assert.equal(resultado.total, 1);
+  assert.equal(resultado.paginas, 1);
+  assert.equal(resultado.paginaAtual, 2);
 });
 
 test("consulta produção ambulatorial SUS sem apresentar valor como preço particular", async () => {

@@ -140,9 +140,31 @@ async function buscarEstabelecimentoPorCnes(codigoCnes) {
   return estabelecimento;
 }
 
+async function buscarEstabelecimentosPorCodigos(codigosCnes, { concorrencia = 4 } = {}) {
+  const codigosUnicos = [...new Set(codigosCnes.filter(codigo => /^\d{1,10}$/.test(String(codigo))))];
+  const resultados = [];
+  for (let indice = 0; indice < codigosUnicos.length; indice += concorrencia) {
+    const grupo = codigosUnicos.slice(indice, indice + concorrencia);
+    const respostas = await Promise.allSettled(grupo.map(async codigo => {
+      const bruto = await getJson(
+        `${API_CNES}/cnes/estabelecimentos/${encodeURIComponent(codigo)}`,
+        { service: "a API CNES" }
+      );
+      const [registro] = extrairEstabelecimentos(bruto);
+      return normalizarEstabelecimento(registro);
+    }));
+    resultados.push(...respostas.map((resposta, posicao) => ({
+      codigoCnes: grupo[posicao],
+      estabelecimento: resposta.status === "fulfilled" ? resposta.value : null
+    })));
+  }
+  return resultados;
+}
+
 module.exports = {
   buscarEstabelecimentos,
   buscarEstabelecimentoPorCnes,
+  buscarEstabelecimentosPorCodigos,
   normalizarEstabelecimento,
   ErroApiExterna
 };

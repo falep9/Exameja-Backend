@@ -11,7 +11,7 @@ class ErroApiExterna extends Error {
   }
 }
 
-async function getJson(url, { service, headers = {} }) {
+async function getJsonResponse(url, { service, headers = {} }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response;
@@ -28,7 +28,10 @@ async function getJson(url, { service, headers = {} }) {
     }
 
     try {
-      return await response.json();
+      return {
+        data: await response.json(),
+        headers: response.headers
+      };
     } catch {
       throw new ErroApiExterna(`${service} retornou uma resposta JSON inválida.`);
     }
@@ -41,4 +44,9 @@ async function getJson(url, { service, headers = {} }) {
   }
 }
 
-module.exports = { getJson, ErroApiExterna };
+async function getJson(url, options) {
+  const resultado = await getJsonResponse(url, options);
+  return resultado.data;
+}
+
+module.exports = { getJson, getJsonResponse, ErroApiExterna };
