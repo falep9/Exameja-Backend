@@ -18,6 +18,7 @@ const {
 } = require("../src/services/cnesService");
 const { geocodingEndereco } = require("../src/services/geocodingService");
 const { listarEstabelecimentos } = require("../src/controllers/cnesController");
+const { buscarCatalogoExames, buscarProducaoSUS } = require("../src/services/examsService");
 
 const buscarOriginal = global.fetch;
 after(() => {
@@ -156,4 +157,41 @@ test("consulta geocodingEndereco ao detalhar um CNES sem coordenadas", async () 
   assert.equal(estabelecimento.longitude, -46.6);
   assert.equal(chamadas.length, 2);
   assert.ok(chamadas[1].startsWith("https://nominatim.openstreetmap.org/"));
+});
+
+test("consulta e normaliza o catálogo TUSS com busca e paginação", async () => {
+  let urlConsultada;
+  global.fetch = async url => {
+    urlConsultada = new URL(url);
+    return new Response(JSON.stringify({
+      results: [{ concept_code: "40304361", display_name: "Hemograma completo", source: "TUSS 22" }],
+      total: 1
+    }), { status: 200 });
+  };
+
+  const resultado = await buscarCatalogoExames({ termo: "hemograma", pagina: 2, limite: 10 });
+  assert.equal(urlConsultada.searchParams.get("q"), "hemograma");
+  assert.equal(urlConsultada.searchParams.get("page"), "2");
+  assert.equal(urlConsultada.searchParams.get("page_size"), "10");
+  assert.equal(resultado.dados[0].codigo, "40304361");
+  assert.equal(resultado.dados[0].descricao, "Hemograma completo");
+  assert.equal(resultado.dados[0].tabela, "TUSS 22");
+  assert.equal(resultado.total, 1);
+});
+
+test("consulta produção ambulatorial SUS sem apresentar valor como preço particular", async () => {
+  let urlConsultada;
+  global.fetch = async url => {
+    urlConsultada = new URL(url);
+    return new Response(JSON.stringify({ dados: [{ procedimento: "Hemograma", valor_aprovado: 5.0 }] }), { status: 200 });
+  };
+
+  const resultado = await buscarProducaoSUS({ ano: 2025, municipio: 3550308, cnes: "1234567", limite: 50, deslocamento: 100 });
+  assert.equal(urlConsultada.searchParams.get("nu_ano"), "2025");
+  assert.equal(urlConsultada.searchParams.get("co_ibge"), "3550308");
+  assert.equal(urlConsultada.searchParams.get("co_cnes"), "1234567");
+  assert.equal(urlConsultada.searchParams.get("limit"), "50");
+  assert.equal(urlConsultada.searchParams.get("offset"), "100");
+  assert.match(resultado.naturezaDosValores, /não são preços de clínicas particulares/i);
+  assert.match(resultado.dados[0].naturezaDosValores, /valores aprovados pelo SUS/i);
 });

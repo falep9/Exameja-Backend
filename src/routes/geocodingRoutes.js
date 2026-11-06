@@ -1,6 +1,6 @@
-const { Router: criarRoute } = require("express");
+const { Router } = require("express");
 const { buscarCoordenadas } = require("../controllers/geocodingController");
 
-const rotas = criarRoute();
-route.get("/", buscarCoordenadas);
-module.exports = route;
+const rotas = Router();
+rotas.get("/", buscarCoordenadas);
+module.exports = rotas;

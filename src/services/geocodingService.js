@@ -1,11 +1,13 @@
 const { createHash: criarHash } = require("node:crypto");
 const { obterBancoFirestore } = require("../config/firebase");
+const { getJson } = require("../utils/externalApi");
 
 const URL_NOMINATIM = process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org/search";
 const IDENTIFICACAO_APLICACAO = process.env.NOMINATIM_USER_AGENT || "ExameJa/1.0";
 const DURACAO_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
 const INTERVALO_MINIMO_MS = 1000;
 const MAXIMO_CONSULTAS_PENDENTES = 30;
+const MAXIMO_ITENS_CACHE_MEMORIA = 1000;
 const cacheEmMemoria = new Map();
 let horarioUltimaConsulta = 0;
 let filaConsultas = Promise.resolve();
@@ -43,6 +45,9 @@ async function consultarCache(chave) {
       resultado: dadosCache.resultado,
       expiraEm: dadosCache.expiraEm
     });
+    if (cacheEmMemoria.size > MAXIMO_ITENS_CACHE_MEMORIA) {
+      cacheEmMemoria.delete(cacheEmMemoria.keys().next().value);
+    }
     return dadosCache.resultado;
   } catch (erro) {
     console.warn("Não foi possível consultar o cache do Firestore:", erro.message);
@@ -53,6 +58,9 @@ async function consultarCache(chave) {
 async function salvarNoCache(chave, endereco, resultado) {
   const expiraEm = Date.now() + DURACAO_CACHE_MS;
   cacheEmMemoria.set(chave, { resultado, expiraEm });
+  if (cacheEmMemoria.size > MAXIMO_ITENS_CACHE_MEMORIA) {
+    cacheEmMemoria.delete(cacheEmMemoria.keys().next().value);
+  }
   if (!firestoreEstaConfigurado()) return;
 
   try {
@@ -125,34 +133,13 @@ async function buscarCoordenadasNoNominatim(endereco) {
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("countrycodes", "br");
 
-  let resposta;
-  try {
-    resposta = await fetch(url, {
-      headers: {
-        "User-Agent": IDENTIFICACAO_APLICACAO,
-        "Accept-Language": "pt-BR"
-      }
-    });
-  } catch (erro) {
-    const falha = new Error(`Não foi possível se comunicar com o Nominatim: ${erro.message}`);
-    falha.status = 502;
-    throw falha;
-  }
-
-  if (!resposta.ok) {
-    const falha = new Error(`O Nominatim respondeu com o status ${resposta.status}.`);
-    falha.status = 502;
-    throw falha;
-  }
-
-  let locaisEncontrados;
-  try {
-    locaisEncontrados = await resposta.json();
-  } catch {
-    const falha = new Error("O Nominatim retornou uma resposta JSON inválida.");
-    falha.status = 502;
-    throw falha;
-  }
+  const locaisEncontrados = await getJson(url, {
+    service: "o Nominatim",
+    headers: {
+      "User-Agent": IDENTIFICACAO_APLICACAO,
+      "Accept-Language": "pt-BR"
+    }
+  });
 
   const localEncontrado = Array.isArray(locaisEncontrados) ? locaisEncontrados[0] : null;
   if (!localEncontrado) {
@@ -165,10 +152,19 @@ async function buscarCoordenadasNoNominatim(endereco) {
     };
   }
 
+  const latitude = Number(localEncontrado.lat);
+  const longitude = Number(localEncontrado.lon);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    const erro = new Error("O Nominatim retornou coordenadas inválidas.");
+    erro.status = 502;
+    throw erro;
+  }
+
   return {
     encontrado: true,
-    latitude: Number(localEncontrado.lat),
-    longitude: Number(localEncontrado.lon),
+    latitude,
+    longitude,
     enderecoFormatado: localEncontrado.display_name || null,
     atribuicao: "OpenStreetMap contributors"
   };

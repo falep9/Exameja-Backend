@@ -1,39 +1,16 @@
 const API_CNES = "https://apidadosabertos.saude.gov.br";
 const { obterBancoFirestore } = require("../config/firebase");
 const { geocodingEndereco } = require("./geocodingService");
-
-class ErroApiExterna extends Error {
-  constructor(mensagem, codigoStatus = 502) {
-    super(mensagem);
-    this.status = codigoStatus;
-  }
-}
-
-async function buscarRespostaJson(url, nomeServico) {
-  let resposta;
-  try {
-    resposta = await fetch(url, { headers: { Accept: "application/json" } });
-  } catch (erro) {
-    throw new ErroApiExterna(`Não foi possível se comunicar com ${nomeServico}: ${erro.message}`);
-  }
-
-  if (!resposta.ok) {
-    const codigoStatus = resposta.status === 404 ? 404 : 502;
-    throw new ErroApiExterna(`${nomeServico} respondeu com o status ${resposta.status}.`, codigoStatus);
-  }
-
-  try {
-    return await resposta.json();
-  } catch {
-    throw new ErroApiExterna(`A resposta de ${nomeServico} não está em um formato válido.`);
-  }
-}
+const { getJson, ErroApiExterna } = require("../utils/externalApi");
 
 function extrairEstabelecimentos(dados) {
   if (Array.isArray(dados)) return dados;
-  if (dados && Array.isArray(dados.estabelecimentos)) return dados.estabelecimentos;
-  if (dados && Array.isArray(dados.dados)) return dados.dados;
-  if (dados && typeof dados === "object") return [dados];
+  for (const chave of ["estabelecimentos", "dados", "results", "data", "items"]) {
+    if (Array.isArray(dados?.[chave])) return dados[chave];
+  }
+  if (dados && typeof dados === "object"
+    && ["codigo_cnes", "codigo_unidade", "cnes", "nome_fantasia", "nome_estabelecimento"]
+      .some(chave => dados[chave] !== undefined)) return [dados];
   throw new ErroApiExterna("A API CNES retornou dados em um formato inesperado.");
 }
 
@@ -50,7 +27,8 @@ function obterCoordenada(registro, nomesCampos) {
   const valor = obterPrimeiroCampo(registro, nomesCampos);
   if (valor === null) return null;
   const numero = Number(valor);
-  return Number.isFinite(numero) ? numero : null;
+  const limite = nomesCampos.some(nome => nome.toLowerCase().includes("latitude")) ? 90 : 180;
+  return Number.isFinite(numero) && Math.abs(numero) <= limite ? numero : null;
 }
 
 function normalizarEstabelecimento(registro) {
@@ -121,9 +99,9 @@ async function buscarEstabelecimentos({ codigoMunicipio, codigoUf, limite = 20, 
   parametros.set("limit", String(Math.min(limite, 20)));
   parametros.set("offset", String(deslocamento));
 
-  const resposta = await buscarRespostaJson(
+  const resposta = await getJson(
     `${API_CNES}/cnes/estabelecimentos?${parametros}`,
-    "a API CNES"
+    { service: "a API CNES" }
   );
   const estabelecimentos = extrairEstabelecimentos(resposta).map(normalizarEstabelecimento);
   await salvarEstabelecimentos(estabelecimentos);
@@ -132,9 +110,9 @@ async function buscarEstabelecimentos({ codigoMunicipio, codigoUf, limite = 20, 
 }
 
 async function buscarEstabelecimentoPorCnes(codigoCnes) {
-  const resposta = await buscarRespostaJson(
+  const resposta = await getJson(
     `${API_CNES}/cnes/estabelecimentos/${encodeURIComponent(codigoCnes)}`,
-    "a API CNES"
+    { service: "a API CNES" }
   );
   const [registro] = extrairEstabelecimentos(resposta);
   const estabelecimento = normalizarEstabelecimento(registro);
