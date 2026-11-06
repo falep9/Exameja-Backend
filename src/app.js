@@ -5,14 +5,20 @@ const morgan = require("morgan");
 const rotasCnes = require("./routes/cnesRoutes");
 const rotasGeocodificacao = require("./routes/geocodingRoutes");
 const rotasExames = require("./routes/examsRoutes");
+const rotasAutenticacao = require("./routes/authRoutes");
+const rotasUsuarios = require("./routes/usersRoutes");
 const { obterBancoFirestore } = require("./config/firebase");
 
 const aplicacao = express();
-const limiteCorpo = process.env.JSON_BODY_LIMIT || "1mb";
+const limiteCorpo = process.env.JSON_BODY_LIMIT || "32kb";
 const origensPermitidas = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map(origem => origem.trim())
   .filter(Boolean);
+
+if (process.env.NODE_ENV === "production" && origensPermitidas.length === 0) {
+  throw new Error("Configure CORS_ORIGINS com as origens autorizadas antes de iniciar em produção.");
+}
 
 function validarOrigemCors(origem, callback) {
   if (!origem || origensPermitidas.includes(origem)) return callback(null, true);
@@ -29,7 +35,9 @@ aplicacao.use(helmet());
 aplicacao.use(cors({ origin: validarOrigemCors }));
 aplicacao.use(express.json({ limit: limiteCorpo }));
 aplicacao.use(express.urlencoded({ extended: false, limit: limiteCorpo }));
-aplicacao.use(morgan("dev"));
+aplicacao.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "tiny", {
+  skip: requisicao => requisicao.path.startsWith("/api/auth")
+}));
 
 aplicacao.get("/health", (_requisicao, resposta) => {
   resposta.status(200).json({ status: "ok" });
@@ -47,6 +55,8 @@ aplicacao.get("/ready", async (_requisicao, resposta) => {
 aplicacao.use("/api/cnes", rotasCnes);
 aplicacao.use("/api/geocoding", rotasGeocodificacao);
 aplicacao.use("/api/exams", rotasExames);
+aplicacao.use("/api/auth", rotasAutenticacao);
+aplicacao.use("/api/users", rotasUsuarios);
 
 aplicacao.use((requisicao, resposta) => resposta.status(404).json({
   message: "Rota não encontrada.",
