@@ -1,7 +1,7 @@
 const { FieldValue } = require("firebase-admin/firestore");
-const { createHmac } = require("node:crypto");
 const { obterAutenticacaoFirebase } = require("../config/firebase");
 const { criarPerfil, excluirPerfil } = require("../repositories/usersRepository");
+const { criarHashCpf } = require("../utils/cpf");
 
 async function registrar(dados) {
   const auth = obterAutenticacaoFirebase();
@@ -10,13 +10,7 @@ async function registrar(dados) {
   try {
     let cpfHash;
     if (dados.tipo === "cliente") {
-      const segredoCpf = process.env.CPF_HMAC_SECRET;
-      if (!segredoCpf || segredoCpf.length < 32) {
-        const erroConfiguracao = new Error("CPF_HMAC_SECRET precisa ter ao menos 32 caracteres para habilitar cadastros de clientes.");
-        erroConfiguracao.status = 503;
-        throw erroConfiguracao;
-      }
-      cpfHash = createHmac("sha256", segredoCpf).update(dados.cpf).digest("hex");
+      cpfHash = criarHashCpf(dados.cpf);
     }
     usuario = await auth.createUser({ email: dados.email, password: dados.senha, emailVerified: false });
     const agora = FieldValue.serverTimestamp();
@@ -25,13 +19,13 @@ async function registrar(dados) {
       email: dados.email,
       tipo: dados.tipo,
       status: dados.tipo === "clinica" ? "pendente" : "ativo",
-      emailVerificado: false,
       criadoEm: agora,
       atualizadoEm: agora
     };
     if (dados.tipo === "cliente") {
       perfil.cpfHash = cpfHash;
       perfil.telefone = dados.telefone;
+      perfil.convenios = [];
     } else {
       Object.assign(perfil, {
         dominioCorporativo: dados.dominioCorporativo,
@@ -41,6 +35,7 @@ async function registrar(dados) {
         telefone: dados.telefone,
         endereco: dados.endereco
       });
+      perfil.conveniosAceitos = [];
       if (dados.cnes) perfil.cnes = dados.cnes;
     }
     await criarPerfil(usuario.uid, perfil);

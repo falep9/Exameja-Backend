@@ -1,17 +1,17 @@
 const { obterAutenticacaoFirebase } = require("../config/firebase");
 const { buscarPerfil } = require("../repositories/usersRepository");
+const { COOKIE_SESSAO, lerCookies } = require("../utils/sessionCookies");
 
 async function autenticarUsuario(requisicao, resposta, proximaFuncao) {
-  const cabecalho = requisicao.get("authorization") || "";
-  const correspondencia = cabecalho.match(/^Bearer\s+(.+)$/i);
-  if (!correspondencia) {
+  const cookieSessao = lerCookies(requisicao)[COOKIE_SESSAO];
+  if (!cookieSessao) {
     return resposta.status(401).json({ message: "Autenticação necessária." });
   }
   let token;
   try {
-    token = await obterAutenticacaoFirebase().verifyIdToken(correspondencia[1], true);
+    token = await obterAutenticacaoFirebase().verifySessionCookie(cookieSessao, true);
   } catch (erro) {
-    if (["auth/id-token-expired", "auth/id-token-revoked", "auth/invalid-id-token", "auth/argument-error"].includes(erro.code)) {
+    if (["auth/session-cookie-expired", "auth/session-cookie-revoked", "auth/invalid-session-cookie", "auth/argument-error"].includes(erro.code)) {
       return resposta.status(401).json({ message: "Token inválido ou expirado." });
     }
     return proximaFuncao(erro);
@@ -29,7 +29,14 @@ async function autenticarUsuario(requisicao, resposta, proximaFuncao) {
   }
   if (!token.email_verified) return resposta.status(403).json({ message: "Verifique seu e-mail para acessar esta conta." });
   if (perfil.status === "suspensa") return resposta.status(403).json({ message: "Esta conta está suspensa." });
-  requisicao.usuario = { uid: token.uid, email: token.email, tipo: perfil.tipo, status: perfil.status };
+  requisicao.usuario = {
+    uid: token.uid,
+    email: token.email,
+    emailVerificado: token.email_verified,
+    tipo: perfil.tipo,
+    status: perfil.status,
+    administrador: token.administrador === true
+  };
   return proximaFuncao();
 }
 

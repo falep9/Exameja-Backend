@@ -43,7 +43,13 @@ function validarSenha(valor) {
 }
 
 function validarDocumento(valor, campo, tamanho) {
-  const documento = textoObrigatorio(valor, campo, tamanho + 20).replace(/\D/g, "");
+  const texto = textoObrigatorio(valor, campo, tamanho + 20);
+  if (!/^[\d.\-/\s]+$/.test(texto)) {
+    const erro = new Error(`Informe um ${campo} com formato e dígitos verificadores válidos.`);
+    erro.status = 400;
+    throw erro;
+  }
+  const documento = texto.replace(/\D/g, "");
   const pesos = tamanho === 11
     ? [[10, 9, 8, 7, 6, 5, 4, 3, 2], [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]]
     : [[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]];
@@ -65,8 +71,15 @@ function validarDocumento(valor, campo, tamanho) {
 
 function validarTelefone(valor) {
   const telefone = textoObrigatorio(valor, "telefone", 30);
+  if (!/^[+\d\s().-]+$/.test(telefone)) {
+    const erro = new Error("Informe um telefone válido com DDD.");
+    erro.status = 400;
+    throw erro;
+  }
   const digitos = telefone.replace(/\D/g, "");
-  if (digitos.length < 10 || digitos.length > 13) {
+  const telefoneNacionalValido = [10, 11].includes(digitos.length);
+  const telefoneComPaisValido = digitos.startsWith("55") && [12, 13].includes(digitos.length);
+  if (!telefoneNacionalValido && !telefoneComPaisValido) {
     const erro = new Error("Informe um telefone válido com DDD.");
     erro.status = 400;
     throw erro;
@@ -134,4 +147,4 @@ function validarCadastro(dados) {
   throw erro;
 }
 
-module.exports = { TIPOS_USUARIO, validarCadastro, validarEmail };
+module.exports = { TIPOS_USUARIO, validarCadastro, validarEmail, validarDocumento, validarTelefone, textoObrigatorio };

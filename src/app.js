@@ -2,11 +2,14 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const protegerCsrf = require("./middleware/protegerCsrf");
 const rotasCnes = require("./routes/cnesRoutes");
 const rotasGeocodificacao = require("./routes/geocodingRoutes");
 const rotasExames = require("./routes/examsRoutes");
 const rotasAutenticacao = require("./routes/authRoutes");
 const rotasUsuarios = require("./routes/usersRoutes");
+const rotasConvenios = require("./routes/conveniosRoutes");
+const rotasClinicas = require("./routes/clinicsRoutes");
 const { obterBancoFirestore } = require("./config/firebase");
 
 const aplicacao = express();
@@ -32,12 +35,13 @@ function validarOrigemCors(origem, callback) {
 }
 
 aplicacao.use(helmet());
-aplicacao.use(cors({ origin: validarOrigemCors }));
+aplicacao.use(cors({ origin: validarOrigemCors, credentials: true }));
 aplicacao.use(express.json({ limit: limiteCorpo }));
 aplicacao.use(express.urlencoded({ extended: false, limit: limiteCorpo }));
 aplicacao.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "tiny", {
   skip: requisicao => requisicao.path.startsWith("/api/auth")
 }));
+aplicacao.use(protegerCsrf);
 
 aplicacao.get("/health", (_requisicao, resposta) => {
   resposta.status(200).json({ status: "ok" });
@@ -57,6 +61,8 @@ aplicacao.use("/api/geocoding", rotasGeocodificacao);
 aplicacao.use("/api/exams", rotasExames);
 aplicacao.use("/api/auth", rotasAutenticacao);
 aplicacao.use("/api/users", rotasUsuarios);
+aplicacao.use("/api/convenios", rotasConvenios);
+aplicacao.use("/api/clinics", rotasClinicas);
 
 aplicacao.use((requisicao, resposta) => resposta.status(404).json({
   message: "Rota não encontrada.",
@@ -67,7 +73,7 @@ aplicacao.use((erro, _requisicao, resposta, _proximaFuncao) => {
   const erroDeParse = erro.type === "entity.parse.failed";
   const codigoStatus = erroDeParse ? 400
     : Number.isInteger(erro.status) ? erro.status : 500;
-  if (codigoStatus >= 500) console.error("Falha ao processar solicitação:", erro.message);
+  if (codigoStatus >= 500) console.error("Falha ao processar solicitação:", erro.code || erro.name || "erro_interno");
   return resposta.status(codigoStatus).json({
     message: erroDeParse ? "O corpo da requisição contém JSON inválido."
       : erro.type === "entity.too.large" ? "O corpo da requisição excede o limite permitido."

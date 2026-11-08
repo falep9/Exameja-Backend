@@ -1,4 +1,9 @@
+const MAXIMO_CHAVES = 10000;
+
 function criarLimitador({ janelaMs, maximo, mensagem }) {
+  if (!Number.isInteger(janelaMs) || janelaMs <= 0 || !Number.isInteger(maximo) || maximo <= 0) {
+    throw new Error("O limitador exige janela e máximo de requisições como inteiros positivos.");
+  }
   const requisicoesPorChave = new Map();
   let ultimaLimpeza = Date.now();
 
@@ -14,6 +19,9 @@ function criarLimitador({ janelaMs, maximo, mensagem }) {
     const chave = requisicao.ip || requisicao.socket.remoteAddress || "desconhecido";
     const registro = requisicoesPorChave.get(chave);
     if (!registro || agora - registro.inicio >= janelaMs) {
+      if (!registro && requisicoesPorChave.size >= MAXIMO_CHAVES) {
+        requisicoesPorChave.delete(requisicoesPorChave.keys().next().value);
+      }
       requisicoesPorChave.set(chave, { inicio: agora, total: 1 });
       return proximaFuncao();
     }
