@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const { randomUUID } = require("node:crypto");
 const protegerCsrf = require("./middleware/protegerCsrf");
 const rotasCnes = require("./routes/cnesRoutes");
 const rotasGeocodificacao = require("./routes/geocodingRoutes");
@@ -10,6 +11,7 @@ const rotasAutenticacao = require("./routes/authRoutes");
 const rotasUsuarios = require("./routes/usersRoutes");
 const rotasConvenios = require("./routes/conveniosRoutes");
 const rotasClinicas = require("./routes/clinicsRoutes");
+const rotasAdministracaoClinicas = require("./routes/adminClinicsRoutes");
 const { obterBancoFirestore } = require("./config/firebase");
 
 const aplicacao = express();
@@ -36,9 +38,16 @@ function validarOrigemCors(origem, callback) {
 
 aplicacao.use(helmet());
 aplicacao.use(cors({ origin: validarOrigemCors, credentials: true }));
+aplicacao.use((requisicao, resposta, proximaFuncao) => {
+  requisicao.id = randomUUID();
+  resposta.set("X-Request-ID", requisicao.id);
+  return proximaFuncao();
+});
 aplicacao.use(express.json({ limit: limiteCorpo }));
 aplicacao.use(express.urlencoded({ extended: false, limit: limiteCorpo }));
-aplicacao.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "tiny", {
+morgan.token("safe-path", requisicao => requisicao.path);
+morgan.token("request-id", requisicao => requisicao.id);
+aplicacao.use(morgan(":method :safe-path :status :response-time ms request_id=:request-id", {
   skip: requisicao => requisicao.path.startsWith("/api/auth")
 }));
 aplicacao.use(protegerCsrf);
@@ -63,17 +72,23 @@ aplicacao.use("/api/auth", rotasAutenticacao);
 aplicacao.use("/api/users", rotasUsuarios);
 aplicacao.use("/api/convenios", rotasConvenios);
 aplicacao.use("/api/clinics", rotasClinicas);
+aplicacao.use("/api/admin/clinics", rotasAdministracaoClinicas);
 
 aplicacao.use((requisicao, resposta) => resposta.status(404).json({
   message: "Rota não encontrada.",
   path: requisicao.originalUrl
 }));
 
-aplicacao.use((erro, _requisicao, resposta, _proximaFuncao) => {
+aplicacao.use((erro, requisicao, resposta, _proximaFuncao) => {
   const erroDeParse = erro.type === "entity.parse.failed";
   const codigoStatus = erroDeParse ? 400
     : Number.isInteger(erro.status) ? erro.status : 500;
-  if (codigoStatus >= 500) console.error("Falha ao processar solicitação:", erro.code || erro.name || "erro_interno");
+  if (codigoStatus >= 500) {
+    console.error("Falha ao processar solicitação:", {
+      requestId: requisicao.id,
+      codigo: erro.code || erro.name || "erro_interno"
+    });
+  }
   return resposta.status(codigoStatus).json({
     message: erroDeParse ? "O corpo da requisição contém JSON inválido."
       : erro.type === "entity.too.large" ? "O corpo da requisição excede o limite permitido."

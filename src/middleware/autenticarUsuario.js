@@ -28,7 +28,6 @@ async function autenticarUsuario(requisicao, resposta, proximaFuncao) {
     return resposta.status(403).json({ message: "O perfil da conta está inválido." });
   }
   if (!token.email_verified) return resposta.status(403).json({ message: "Verifique seu e-mail para acessar esta conta." });
-  if (perfil.status === "suspensa") return resposta.status(403).json({ message: "Esta conta está suspensa." });
   requisicao.usuario = {
     uid: token.uid,
     email: token.email,

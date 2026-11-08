@@ -30,7 +30,9 @@ async function obterMeuPerfil(requisicao, resposta, proximaFuncao) {
         cnes: perfil.cnes || null,
         telefone: perfil.telefone,
         endereco: perfil.endereco,
-        conveniosAceitos: Array.isArray(perfil.conveniosAceitos) ? perfil.conveniosAceitos : []
+        conveniosAceitos: Array.isArray(perfil.conveniosAceitos) ? perfil.conveniosAceitos : [],
+        ...(perfil.status === "rejeitada" ? { motivoRejeicao: perfil.motivoStatus || null } : {}),
+        ...(perfil.status === "suspensa" ? { motivoSuspensao: perfil.motivoStatus || null } : {})
       });
     }
     return resposta.status(200).json({ usuario });
@@ -57,7 +59,9 @@ async function atualizarMeuPerfil(requisicao, resposta, proximaFuncao) {
     const atualizacao = { ...dados };
     const requerReaprovacao = perfilAtual.tipo === "clinica"
       && perfilAtual.status === "aprovada"
-      && (Object.hasOwn(dados, "nomeFantasia") || Object.hasOwn(dados, "endereco"));
+      && (Object.hasOwn(dados, "nomeFantasia")
+        || Object.hasOwn(dados, "endereco")
+        || Object.hasOwn(dados, "telefone"));
     if (requerReaprovacao) atualizacao.status = "pendente";
     if (Object.hasOwn(dados, "cpf")) {
       atualizacao.cpfHash = criarHashCpf(dados.cpf);

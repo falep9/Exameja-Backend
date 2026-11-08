@@ -1,0 +1,10 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // O acesso aos dados do produto passa pela API; o Admin SDK ignora estas regras.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

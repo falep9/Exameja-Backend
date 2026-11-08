@@ -1,5 +1,5 @@
 const conveniosRepository = require("../repositories/conveniosRepository");
-const { buscarPerfil } = require("../repositories/usersRepository");
+const { buscarPerfil, decidirStatusClinica } = require("../repositories/usersRepository");
 
 async function sugerirPorConvenio(requisicao, resposta, proximaFuncao) {
   try {
@@ -32,4 +32,24 @@ async function sugerirPorConvenio(requisicao, resposta, proximaFuncao) {
   }
 }
 
-module.exports = { sugerirPorConvenio };
+async function reenviarParaAnalise(requisicao, resposta, proximaFuncao) {
+  try {
+    if (requisicao.usuario.tipo !== "clinica") {
+      return resposta.status(403).json({ message: "Esta ação está disponível para contas de clínica." });
+    }
+    const clinica = await decidirStatusClinica({
+      uid: requisicao.usuario.uid,
+      acao: "reenviar",
+      atorUid: requisicao.usuario.uid,
+      motivo: null
+    });
+    return resposta.status(200).json({
+      message: "Cadastro reenviado para análise.",
+      clinica
+    });
+  } catch (erro) {
+    return proximaFuncao(erro);
+  }
+}
+
+module.exports = { sugerirPorConvenio, reenviarParaAnalise };

@@ -1,5 +1,5 @@
 function exigirAdministrador(requisicao, resposta, proximaFuncao) {
-  if (!requisicao.usuario?.administrador) {
+  if (!requisicao.usuario?.administrador || requisicao.usuario?.status === "suspensa") {
     return resposta.status(403).json({ message: "Acesso restrito à administração." });
   }
   return proximaFuncao();

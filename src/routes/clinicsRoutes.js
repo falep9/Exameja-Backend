@@ -1,8 +1,10 @@
 const { Router } = require("express");
 const autenticarUsuario = require("../middleware/autenticarUsuario");
-const { sugerirPorConvenio } = require("../controllers/clinicsController");
+const exigirContaAtiva = require("../middleware/exigirContaAtiva");
+const { sugerirPorConvenio, reenviarParaAnalise } = require("../controllers/clinicsController");
 
 const rotas = Router();
-rotas.get("/suggestions", autenticarUsuario, sugerirPorConvenio);
+rotas.get("/suggestions", autenticarUsuario, exigirContaAtiva, sugerirPorConvenio);
+rotas.post("/me/resubmit", autenticarUsuario, exigirContaAtiva, reenviarParaAnalise);
 
 module.exports = rotas;
