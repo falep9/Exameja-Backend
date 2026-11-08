@@ -48,11 +48,23 @@ function obterCredencialFirebase() {
 function inicializarFirebase() {
   if (obterAplicacoesFirebase().length > 0) return obterAplicacoesFirebase()[0];
 
-  const identificadorProjeto = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+  const identificadorProjeto = process.env.FIREBASE_PROJECT_ID
+    || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
   return inicializarAplicacao({
     credential: obterCredencialFirebase(),
     ...(identificadorProjeto ? { projectId: identificadorProjeto } : {})
   });
+}
+
+function firebaseEstaConfigurado() {
+  return Boolean(
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+      || process.env.GOOGLE_APPLICATION_CREDENTIALS
+      || (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
+      || process.env.GCLOUD_PROJECT
+      || process.env.GOOGLE_CLOUD_PROJECT
+      || (process.env.NODE_ENV === "production" && process.env.FIREBASE_PROJECT_ID)
+  );
 }
 
 function obterAutenticacaoFirebase() {
@@ -65,6 +77,7 @@ function obterBancoFirestore() {
 
 module.exports = {
   inicializarFirebase,
+  firebaseEstaConfigurado,
   obterAutenticacaoFirebase,
   obterBancoFirestore
 };

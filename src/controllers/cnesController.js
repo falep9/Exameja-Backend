@@ -2,6 +2,11 @@ const { buscarEstabelecimentos, buscarEstabelecimentoPorCnes } = require("../ser
 
 function validarInteiros(valor, nomeParametro, { minimo = 0, maximo = Number.MAX_SAFE_INTEGER } = {}) {
   if (valor === undefined || valor === "") return undefined;
+  if (typeof valor !== "string" || !/^\d+$/.test(valor)) {
+    const erro = new Error(`O parâmetro '${nomeParametro}' deve conter somente dígitos.`);
+    erro.status = 400;
+    throw erro;
+  }
   const numero = Number(valor);
   if (!Number.isInteger(numero) || numero < minimo || numero > maximo) {
     const erro = new Error(`O parâmetro '${nomeParametro}' deve ser um número inteiro entre ${minimo} e ${maximo}.`);

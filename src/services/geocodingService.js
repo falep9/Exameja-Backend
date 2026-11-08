@@ -1,5 +1,5 @@
 const { createHash: criarHash } = require("node:crypto");
-const { obterBancoFirestore } = require("../config/firebase");
+const { obterBancoFirestore, firebaseEstaConfigurado } = require("../config/firebase");
 const { getJson } = require("../utils/externalApi");
 
 const URL_NOMINATIM = process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org/search";
@@ -12,25 +12,18 @@ const cacheEmMemoria = new Map();
 let horarioUltimaConsulta = 0;
 let filaConsultas = Promise.resolve();
 let quantidadeConsultasPendentes = 0;
+let avisouLimitadorGlobalIndisponivel = false;
 
 function criarChaveCache(endereco) {
   const enderecoNormalizado = endereco.trim().toLocaleLowerCase("pt-BR");
   return criarHash("sha256").update(enderecoNormalizado).digest("hex");
 }
 
-function firestoreEstaConfigurado() {
-  return Boolean(
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-      || process.env.GOOGLE_APPLICATION_CREDENTIALS
-      || (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
-  );
-}
-
 async function consultarCache(chave) {
   const itemEmMemoria = cacheEmMemoria.get(chave);
   if (itemEmMemoria && itemEmMemoria.expiraEm > Date.now()) return itemEmMemoria.resultado;
   if (itemEmMemoria) cacheEmMemoria.delete(chave);
-  if (!firestoreEstaConfigurado()) return undefined;
+  if (!firebaseEstaConfigurado()) return undefined;
 
   try {
     const documento = await obterBancoFirestore()
@@ -61,7 +54,7 @@ async function salvarNoCache(chave, endereco, resultado) {
   if (cacheEmMemoria.size > MAXIMO_ITENS_CACHE_MEMORIA) {
     cacheEmMemoria.delete(cacheEmMemoria.keys().next().value);
   }
-  if (!firestoreEstaConfigurado()) return;
+  if (!firebaseEstaConfigurado()) return;
 
   try {
     await obterBancoFirestore().collection("geocoding_cache").doc(chave).set({
@@ -102,26 +95,34 @@ function executarNaFila(tarefa) {
 }
 
 async function reservarHorarioGlobal() {
-  if (!firestoreEstaConfigurado()) return;
+  if (!firebaseEstaConfigurado()) return;
 
-  const banco = obterBancoFirestore();
-  const referencia = banco.collection("_controles_integracao").doc("nominatim");
-  const horarioReservado = await banco.runTransaction(async transacao => {
-    const documento = await transacao.get(referencia);
-    const dadosControle = documento.exists ? documento.data() : {};
-    const horarioAgora = Date.now();
-    const horarioPermitido = Math.max(horarioAgora, dadosControle.proximaConsultaEm || 0);
+  try {
+    const banco = obterBancoFirestore();
+    const referencia = banco.collection("_controles_integracao").doc("nominatim");
+    const horarioReservado = await banco.runTransaction(async transacao => {
+      const documento = await transacao.get(referencia);
+      const dadosControle = documento.exists ? documento.data() : {};
+      const horarioAgora = Date.now();
+      const horarioPermitido = Math.max(horarioAgora, dadosControle.proximaConsultaEm || 0);
 
-    transacao.set(referencia, {
-      proximaConsultaEm: horarioPermitido + INTERVALO_MINIMO_MS,
-      atualizadoEm: new Date(horarioAgora).toISOString()
+      transacao.set(referencia, {
+        proximaConsultaEm: horarioPermitido + INTERVALO_MINIMO_MS,
+        atualizadoEm: new Date(horarioAgora).toISOString()
+      });
+      return horarioPermitido;
     });
-    return horarioPermitido;
-  });
+    avisouLimitadorGlobalIndisponivel = false;
 
-  const esperaNecessaria = Math.max(0, horarioReservado - Date.now());
-  if (esperaNecessaria > 0) {
-    await new Promise(resolver => setTimeout(resolver, esperaNecessaria));
+    const esperaNecessaria = Math.max(0, horarioReservado - Date.now());
+    if (esperaNecessaria > 0) {
+      await new Promise(resolver => setTimeout(resolver, esperaNecessaria));
+    }
+  } catch (erro) {
+    if (!avisouLimitadorGlobalIndisponivel) {
+      console.warn("Rate limit global do Nominatim indisponível; aplicando o limite local:", erro.code || erro.name);
+      avisouLimitadorGlobalIndisponivel = true;
+    }
   }
 }
 

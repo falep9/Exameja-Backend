@@ -1,5 +1,5 @@
 const API_CNES = "https://apidadosabertos.saude.gov.br";
-const { obterBancoFirestore } = require("../config/firebase");
+const { obterBancoFirestore, firebaseEstaConfigurado } = require("../config/firebase");
 const { geocodingEndereco } = require("./geocodingService");
 const { getJson, ErroApiExterna } = require("../utils/externalApi");
 
@@ -59,16 +59,8 @@ function normalizarEstabelecimento(registro) {
   };
 }
 
-function firestoreEstaConfigurado() {
-  return Boolean(
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-      || process.env.GOOGLE_APPLICATION_CREDENTIALS
-      || (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
-  );
-}
-
 async function salvarEstabelecimentos(estabelecimentos) {
-  if (!firestoreEstaConfigurado()) return;
+  if (!firebaseEstaConfigurado()) return;
 
   let banco;
   try {
