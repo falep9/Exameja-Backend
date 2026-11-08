@@ -12,6 +12,11 @@ const {
   limparCookiesSessao
 } = require("../utils/sessionCookies");
 
+const ESTADOS_VALIDOS_POR_TIPO = Object.freeze({
+  cliente: new Set(["ativo"]),
+  clinica: new Set(["pendente", "aprovada", "rejeitada", "suspensa"])
+});
+
 async function registrar(requisicao, resposta, proximaFuncao) {
   try {
     const dados = validarCadastro(requisicao.body);
@@ -50,7 +55,9 @@ async function criarSessao(requisicao, resposta, proximaFuncao) {
     if (!perfil || perfil.uid !== token.uid || !["cliente", "clinica"].includes(perfil.tipo)) {
       return resposta.status(403).json({ message: "O perfil da conta não está disponível." });
     }
-    if (perfil.status === "suspensa") return resposta.status(403).json({ message: "Esta conta está suspensa." });
+    if (!ESTADOS_VALIDOS_POR_TIPO[perfil.tipo].has(perfil.status)) {
+      return resposta.status(403).json({ message: "O estado da conta não permite iniciar sessão." });
+    }
     const cookieSessao = await auth.createSessionCookie(bearer[1], { expiresIn: DURACAO_SESSAO_MS });
     const tokenCsrf = lerCookies(requisicao)[COOKIE_CSRF] || criarTokenCsrf();
     definirCookiesSessao(resposta, cookieSessao, tokenCsrf);

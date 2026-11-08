@@ -114,7 +114,7 @@ function validarCadastro(dados) {
     };
   }
   if (tipo === TIPOS_USUARIO.CLINICA) {
-    validarCorpo(dados, ["tipo", "email", "senha", "dominioCorporativo", "razaoSocial", "nomeFantasia", "cnpj", "cnes", "telefone", "endereco"]);
+    validarCorpo(dados, ["tipo", "email", "senha", "dominioCorporativo", "razaoSocial", "nomeFantasia", "cnpj", "cnes", "telefone", "endereco", "declaracaoVinculo"]);
     const email = validarEmail(dados.email);
     const cadastro = {
       tipo,
@@ -125,7 +125,8 @@ function validarCadastro(dados) {
       nomeFantasia: textoObrigatorio(dados.nomeFantasia, "nomeFantasia", 200),
       cnpj: validarDocumento(dados.cnpj, "CNPJ", 14),
       telefone: validarTelefone(dados.telefone),
-      endereco: textoObrigatorio(dados.endereco, "endereco", 500)
+      endereco: textoObrigatorio(dados.endereco, "endereco", 500),
+      declaracaoVinculo: textoObrigatorio(dados.declaracaoVinculo, "declaracaoVinculo", 5000)
     };
     if (dados.cnes !== undefined && dados.cnes !== "") {
       if (typeof dados.cnes !== "string") {

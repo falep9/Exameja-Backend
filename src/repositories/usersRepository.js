@@ -66,6 +66,10 @@ async function atualizarPerfil(idUsuario, atualizacao) {
 
     if (atualizacao.cpfHash) {
       const hashAnterior = perfilSnapshot.get("cpfHash");
+      if (hashAnterior === atualizacao.cpfHash) {
+        transacao.update(referencia, { ...atualizacao, atualizadoEm: FieldValue.serverTimestamp() });
+        return;
+      }
       const referenciaNova = banco.collection(COLECAO_CPFS).doc(atualizacao.cpfHash);
       const referenciaAnterior = hashAnterior
         ? banco.collection(COLECAO_CPFS).doc(hashAnterior)
@@ -89,8 +93,7 @@ async function atualizarPerfil(idUsuario, atualizacao) {
       if (!reservaNova.exists) {
         transacao.create(referenciaNova, { uid: idUsuario, criadoEm: FieldValue.serverTimestamp() });
       }
-      if (referenciaAnterior && hashAnterior !== atualizacao.cpfHash
-        && reservaAnterior?.exists && reservaAnterior.get("uid") === idUsuario) {
+      if (referenciaAnterior && reservaAnterior?.exists && reservaAnterior.get("uid") === idUsuario) {
         transacao.delete(referenciaAnterior);
       }
     }
@@ -174,6 +177,7 @@ async function decidirStatusClinica({ uid, acao, atorUid, motivo }) {
     transacao.update(referencia, {
       status: novoStatus,
       motivoStatus: motivo || null,
+      ...(acao !== "reenviar" ? { decididoPor: atorUid, decididoEm: agora } : {}),
       atualizadoEm: agora,
       statusAtualizadoEm: agora
     });
@@ -183,6 +187,7 @@ async function decidirStatusClinica({ uid, acao, atorUid, motivo }) {
       acao,
       statusAnterior,
       statusNovo: novoStatus,
+      ...(acao !== "reenviar" ? { decididoPor: atorUid, decididoEm: agora } : {}),
       motivo: motivo || null,
       criadoEm: agora
     });

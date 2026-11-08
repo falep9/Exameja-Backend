@@ -47,8 +47,8 @@ async function atualizarMeuPerfil(requisicao, resposta, proximaFuncao) {
     if (!perfilAtual) return resposta.status(404).json({ message: "Perfil não encontrado." });
 
     const dados = validarAtualizacaoPerfil(requisicao.body, perfilAtual.tipo, perfilAtual.status);
-    const idsConvenios = dados.convenios || dados.conveniosAceitos;
-    if (idsConvenios) {
+    const idsConvenios = dados.convenios ?? dados.conveniosAceitos;
+    if (idsConvenios !== undefined) {
       const encontrados = await conveniosRepository.buscarPorIds(idsConvenios);
       if (encontrados.length !== idsConvenios.length || encontrados.some(convenio => !convenio.ativo)) {
         const erro = new Error("Selecione somente convênios ativos do catálogo.");

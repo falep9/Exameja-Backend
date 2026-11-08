@@ -24,7 +24,8 @@ test("normaliza o e-mail e exige que a clínica use o domínio corporativo infor
     nomeFantasia: "Clínica Exemplo",
     cnpj: "11222333000181",
     telefone: "1133334444",
-    endereco: "Rua Exemplo, 100"
+    endereco: "Rua Exemplo, 100",
+    declaracaoVinculo: "Declaro que sou responsável pela clínica e autorizo o cadastro."
   };
   assert.equal(validarCadastro(cadastroBase).dominioCorporativo, "clinica.exemplo.br");
   assert.throws(() => validarCadastro({
