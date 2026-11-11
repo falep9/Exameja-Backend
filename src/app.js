@@ -12,6 +12,7 @@ const rotasUsuarios = require("./routes/usersRoutes");
 const rotasConvenios = require("./routes/conveniosRoutes");
 const rotasClinicas = require("./routes/clinicsRoutes");
 const rotasAdministracaoClinicas = require("./routes/adminClinicsRoutes");
+const rotasConversas = require("./routes/conversationsRoutes");
 const { obterBancoFirestore } = require("./config/firebase");
 
 const aplicacao = express();
@@ -73,6 +74,7 @@ aplicacao.use("/api/users", rotasUsuarios);
 aplicacao.use("/api/convenios", rotasConvenios);
 aplicacao.use("/api/clinics", rotasClinicas);
 aplicacao.use("/api/admin/clinics", rotasAdministracaoClinicas);
+aplicacao.use("/api/conversations", rotasConversas);
 
 aplicacao.use((requisicao, resposta) => resposta.status(404).json({
   message: "Rota não encontrada.",
