@@ -1,4 +1,4 @@
-const { iniciarConversa } = require("../services/conversationsService");
+const { iniciarConversa, enviarMensagem } = require("../services/conversationsService");
 
 async function iniciar(requisicao, resposta, proximaFuncao) {
   try {
@@ -12,4 +12,17 @@ async function iniciar(requisicao, resposta, proximaFuncao) {
   }
 }
 
-module.exports = { iniciar };
+async function enviar(requisicao, resposta, proximaFuncao) {
+  try {
+    const mensagem = await enviarMensagem(
+      requisicao.usuario,
+      requisicao.params.id,
+      requisicao.body?.texto
+    );
+    return resposta.status(201).json(mensagem);
+  } catch (erro) {
+    return proximaFuncao(erro);
+  }
+}
+
+module.exports = { iniciar, enviar };
