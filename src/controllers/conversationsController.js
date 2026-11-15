@@ -1,4 +1,9 @@
-const { iniciarConversa, enviarMensagem } = require("../services/conversationsService");
+const {
+  iniciarConversa,
+  enviarMensagem,
+  listarMensagens: buscarMensagens,
+  listarConversas: buscarConversas
+} = require("../services/conversationsService");
 
 async function iniciar(requisicao, resposta, proximaFuncao) {
   try {
@@ -25,4 +30,28 @@ async function enviar(requisicao, resposta, proximaFuncao) {
   }
 }
 
-module.exports = { iniciar, enviar };
+async function listar(requisicao, resposta, proximaFuncao) {
+  try {
+    const resultado = await buscarConversas(requisicao.usuario, {
+      limite: requisicao.query.limite,
+      cursor: requisicao.query.cursor
+    });
+    return resposta.status(200).json(resultado);
+  } catch (erro) {
+    return proximaFuncao(erro);
+  }
+}
+
+async function listarMensagens(requisicao, resposta, proximaFuncao) {
+  try {
+    const resultado = await buscarMensagens(requisicao.usuario, requisicao.params.id, {
+      limite: requisicao.query.limite,
+      cursor: requisicao.query.cursor
+    });
+    return resposta.status(200).json(resultado);
+  } catch (erro) {
+    return proximaFuncao(erro);
+  }
+}
+
+module.exports = { iniciar, enviar, listar, listarMensagens };

@@ -7,6 +7,8 @@ const buscarPerfilOriginal = usersRepository.buscarPerfil;
 const criarOuBuscarConversaOriginal = conversationsRepository.criarOuBuscarConversa;
 const buscarConversaOriginal = conversationsRepository.buscarConversa;
 const salvarMensagemOriginal = conversationsRepository.salvarMensagem;
+const listarMensagensOriginal = conversationsRepository.listarMensagens;
+const listarConversasOriginal = conversationsRepository.listarConversas;
 
 let perfilClinica;
 let resultadoRepositorio;
@@ -16,6 +18,11 @@ let conversaAtual;
 let mensagemSalva;
 let chamadasBuscarConversa;
 let dadosSalvos;
+let resultadoMensagens;
+let resultadoConversas;
+let erroListarMensagens;
+let chamadasListarMensagens;
+let chamadasListarConversas;
 usersRepository.buscarPerfil = async () => {
   chamadasBuscarPerfil += 1;
   return perfilClinica;
@@ -32,14 +39,25 @@ conversationsRepository.salvarMensagem = async dados => {
   dadosSalvos = dados;
   return mensagemSalva;
 };
+conversationsRepository.listarMensagens = async dados => {
+  chamadasListarMensagens.push(dados);
+  if (erroListarMensagens) throw erroListarMensagens;
+  return resultadoMensagens;
+};
+conversationsRepository.listarConversas = async dados => {
+  chamadasListarConversas.push(dados);
+  return resultadoConversas;
+};
 
-const { iniciar, enviar } = require("../src/controllers/conversationsController");
+const { iniciar, enviar, listar, listarMensagens } = require("../src/controllers/conversationsController");
 
 after(() => {
   usersRepository.buscarPerfil = buscarPerfilOriginal;
   conversationsRepository.criarOuBuscarConversa = criarOuBuscarConversaOriginal;
   conversationsRepository.buscarConversa = buscarConversaOriginal;
   conversationsRepository.salvarMensagem = salvarMensagemOriginal;
+  conversationsRepository.listarMensagens = listarMensagensOriginal;
+  conversationsRepository.listarConversas = listarConversasOriginal;
 });
 
 function prepararTeste({ tipo = "cliente", clinica = { tipo: "clinica", status: "aprovada" } } = {}) {
@@ -109,6 +127,44 @@ async function executarEnvio(requisicao) {
   const resposta = respostaFalsa();
   let erro;
   await enviar(requisicao, resposta, recebido => { erro = recebido; });
+  return { resposta, erro };
+}
+
+function prepararLeitura({
+  usuario = { uid: "cliente-1", tipo: "cliente", administrador: false },
+  conversa = { clienteUid: "cliente-1", clinicaUid: "clinica-1" },
+  query = {}
+} = {}) {
+  conversaAtual = conversa;
+  resultadoMensagens = {
+    mensagens: [{
+      id: "mensagem-1",
+      remetenteUid: "clinica-1",
+      texto: "Olá!",
+      criadoEm: "agora"
+    }],
+    proximoCursor: "mensagem-1"
+  };
+  resultadoConversas = {
+    conversas: [{
+      id: "cliente-1_clinica-1",
+      clienteUid: "cliente-1",
+      clinicaUid: "clinica-1",
+      ultimaMensagem: "Olá!",
+      atualizadoEm: "agora"
+    }],
+    proximoCursor: null
+  };
+  erroListarMensagens = null;
+  chamadasListarMensagens = [];
+  chamadasListarConversas = [];
+  return { usuario, params: { id: "cliente-1_clinica-1" }, query };
+}
+
+async function executarListagem(funcao, requisicao) {
+  const resposta = respostaFalsa();
+  let erro;
+  await funcao(requisicao, resposta, recebido => { erro = recebido; });
   return { resposta, erro };
 }
 
@@ -235,4 +291,103 @@ test("responde 409 quando a outra parte clínica não está aprovada", async () 
 
   assert.equal(erro.status, 409);
   assert.equal(dadosSalvos, null);
+});
+
+test("lista mensagens da conversa e responde 200", async () => {
+  const requisicao = prepararLeitura({ query: { limite: "10" } });
+  const { resposta, erro } = await executarListagem(listarMensagens, requisicao);
+
+  assert.equal(erro, undefined);
+  assert.equal(resposta.codigo, 200);
+  assert.deepEqual(resposta.corpo, resultadoMensagens);
+  assert.deepEqual(chamadasListarMensagens[0], {
+    conversaId: "cliente-1_clinica-1",
+    limite: 10,
+    cursor: undefined
+  });
+});
+
+test("lista mensagens com proximoCursor nulo quando não há mais", async () => {
+  const requisicao = prepararLeitura();
+  resultadoMensagens.proximoCursor = null;
+  const { resposta } = await executarListagem(listarMensagens, requisicao);
+
+  assert.equal(resposta.codigo, 200);
+  assert.equal(resposta.corpo.proximoCursor, null);
+});
+
+test("impede não participante de ler mensagens", async () => {
+  const requisicao = prepararLeitura({
+    usuario: { uid: "outro-uid", tipo: "cliente", administrador: false }
+  });
+  const { erro } = await executarListagem(listarMensagens, requisicao);
+
+  assert.equal(erro.status, 403);
+  assert.equal(chamadasListarMensagens.length, 0);
+});
+
+test("responde 404 ao listar mensagens de conversa inexistente", async () => {
+  const requisicao = prepararLeitura({ conversa: null });
+  const { erro } = await executarListagem(listarMensagens, requisicao);
+
+  assert.equal(erro.status, 404);
+  assert.equal(chamadasListarMensagens.length, 0);
+});
+
+test("responde 400 quando o cursor de mensagem não existe", async () => {
+  const requisicao = prepararLeitura({ query: { cursor: "cursor-inexistente" } });
+  erroListarMensagens = Object.assign(new Error("Cursor de paginação não encontrado."), { status: 400 });
+  const { erro } = await executarListagem(listarMensagens, requisicao);
+
+  assert.equal(erro.status, 400);
+  assert.deepEqual(chamadasListarMensagens[0], {
+    conversaId: "cliente-1_clinica-1",
+    limite: 30,
+    cursor: "cursor-inexistente"
+  });
+});
+
+test("permite que administrador leia mensagens", async () => {
+  const requisicao = prepararLeitura({
+    usuario: { uid: "admin-1", tipo: "cliente", administrador: true }
+  });
+  const { resposta, erro } = await executarListagem(listarMensagens, requisicao);
+
+  assert.equal(erro, undefined);
+  assert.equal(resposta.codigo, 200);
+  assert.deepEqual(resposta.corpo, resultadoMensagens);
+});
+
+test("lista conversas do usuário autenticado", async () => {
+  const requisicao = prepararLeitura({ query: { limite: "20" } });
+  const { resposta, erro } = await executarListagem(listar, requisicao);
+
+  assert.equal(erro, undefined);
+  assert.equal(resposta.codigo, 200);
+  assert.deepEqual(resposta.corpo, resultadoConversas);
+  assert.deepEqual(chamadasListarConversas[0], {
+    campoUsuario: "clienteUid",
+    usuarioUid: "cliente-1",
+    limite: 20,
+    cursor: undefined
+  });
+});
+
+test("impede administrador de listar conversas", async () => {
+  const requisicao = prepararLeitura({
+    usuario: { uid: "admin-1", tipo: "cliente", administrador: true }
+  });
+  const { erro } = await executarListagem(listar, requisicao);
+
+  assert.equal(erro.status, 403);
+  assert.equal(chamadasListarConversas.length, 0);
+});
+
+test("reduz limite acima de 50 para 50", async () => {
+  const requisicao = prepararLeitura({ query: { limite: "80" } });
+  const { resposta, erro } = await executarListagem(listarMensagens, requisicao);
+
+  assert.equal(erro, undefined);
+  assert.equal(resposta.codigo, 200);
+  assert.equal(chamadasListarMensagens[0].limite, 50);
 });

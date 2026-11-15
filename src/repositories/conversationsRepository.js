@@ -55,4 +55,68 @@ async function salvarMensagem({ conversaId, remetenteUid, texto }) {
   return { id: documento.id, ...documento.data() };
 }
 
-module.exports = { buscarConversa, criarOuBuscarConversa, salvarMensagem };
+async function listarMensagens({ conversaId, limite, cursor }) {
+  const colecao = obterBancoFirestore().collection("conversas").doc(conversaId).collection("mensagens");
+  let consulta = colecao.orderBy("criadoEm", "desc");
+
+  if (cursor !== undefined) {
+    const documentoCursor = await colecao.doc(cursor).get();
+    if (!documentoCursor.exists) {
+      const erro = new Error("Cursor de paginação não encontrado.");
+      erro.status = 400;
+      throw erro;
+    }
+    consulta = consulta.startAfter(documentoCursor);
+  }
+
+  const snapshot = await consulta.limit(limite + 1).get();
+  const temMais = snapshot.docs.length > limite;
+  const documentos = snapshot.docs.slice(0, limite);
+  return {
+    mensagens: documentos.map(documento => ({
+      id: documento.id,
+      remetenteUid: documento.get("remetenteUid"),
+      texto: documento.get("texto"),
+      criadoEm: documento.get("criadoEm")
+    })),
+    proximoCursor: temMais ? documentos[documentos.length - 1].id : null
+  };
+}
+
+async function listarConversas({ campoUsuario, usuarioUid, limite, cursor }) {
+  const colecao = obterBancoFirestore().collection("conversas");
+  let consulta = colecao.where(campoUsuario, "==", usuarioUid)
+    .orderBy("atualizadoEm", "desc");
+
+  if (cursor !== undefined) {
+    const documentoCursor = await colecao.doc(cursor).get();
+    if (!documentoCursor.exists || documentoCursor.get(campoUsuario) !== usuarioUid) {
+      const erro = new Error("Cursor de paginação não encontrado.");
+      erro.status = 400;
+      throw erro;
+    }
+    consulta = consulta.startAfter(documentoCursor);
+  }
+
+  const snapshot = await consulta.limit(limite + 1).get();
+  const temMais = snapshot.docs.length > limite;
+  const documentos = snapshot.docs.slice(0, limite);
+  return {
+    conversas: documentos.map(documento => ({
+      id: documento.id,
+      clienteUid: documento.get("clienteUid"),
+      clinicaUid: documento.get("clinicaUid"),
+      ultimaMensagem: documento.get("ultimaMensagem"),
+      atualizadoEm: documento.get("atualizadoEm")
+    })),
+    proximoCursor: temMais ? documentos[documentos.length - 1].id : null
+  };
+}
+
+module.exports = {
+  buscarConversa,
+  criarOuBuscarConversa,
+  salvarMensagem,
+  listarMensagens,
+  listarConversas
+};
