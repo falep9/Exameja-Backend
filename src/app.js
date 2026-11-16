@@ -1,0 +1,108 @@
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const { randomUUID } = require("node:crypto");
+const protegerCsrf = require("./middleware/protegerCsrf");
+const rotasCnes = require("./routes/cnesRoutes");
+const rotasGeocodificacao = require("./routes/geocodingRoutes");
+const rotasExames = require("./routes/examsRoutes");
+const rotasAutenticacao = require("./routes/authRoutes");
+const rotasUsuarios = require("./routes/usersRoutes");
+const rotasConvenios = require("./routes/conveniosRoutes");
+const rotasClinicas = require("./routes/clinicsRoutes");
+const rotasAdministracaoClinicas = require("./routes/adminClinicsRoutes");
+const { obterBancoFirestore } = require("./config/firebase");
+
+const aplicacao = express();
+const saltosProxyConfigurados = process.env.TRUST_PROXY_HOPS;
+if (saltosProxyConfigurados !== undefined && saltosProxyConfigurados !== "") {
+  if (!/^\d+$/.test(saltosProxyConfigurados) || Number(saltosProxyConfigurados) > 10) {
+    throw new Error("TRUST_PROXY_HOPS deve ser um inteiro de 0 a 10.");
+  }
+  aplicacao.set("trust proxy", Number(saltosProxyConfigurados));
+}
+const limiteCorpo = process.env.JSON_BODY_LIMIT || "32kb";
+const origensPermitidas = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map(origem => origem.trim())
+  .filter(Boolean);
+
+if (process.env.NODE_ENV === "production" && origensPermitidas.length === 0) {
+  throw new Error("Configure CORS_ORIGINS com as origens autorizadas antes de iniciar em produção.");
+}
+
+function validarOrigemCors(origem, callback) {
+  if (!origem || origensPermitidas.includes(origem)) return callback(null, true);
+  if (process.env.NODE_ENV !== "production" && origensPermitidas.length === 0) {
+    return callback(null, true);
+  }
+
+  const erro = new Error("A origem desta solicitação não está autorizada.");
+  erro.status = 403;
+  return callback(erro);
+}
+
+aplicacao.use(helmet());
+aplicacao.use(cors({ origin: validarOrigemCors, credentials: true }));
+aplicacao.use((requisicao, resposta, proximaFuncao) => {
+  requisicao.id = randomUUID();
+  resposta.set("X-Request-ID", requisicao.id);
+  return proximaFuncao();
+});
+aplicacao.use(express.json({ limit: limiteCorpo }));
+aplicacao.use(express.urlencoded({ extended: false, limit: limiteCorpo }));
+morgan.token("safe-path", requisicao => requisicao.path);
+morgan.token("request-id", requisicao => requisicao.id);
+aplicacao.use(morgan(":method :safe-path :status :response-time ms request_id=:request-id", {
+  skip: requisicao => requisicao.path.startsWith("/api/auth")
+}));
+aplicacao.use(protegerCsrf);
+
+aplicacao.get("/health", (_requisicao, resposta) => {
+  resposta.status(200).json({ status: "ok" });
+});
+
+aplicacao.get("/ready", async (_requisicao, resposta) => {
+  try {
+    await obterBancoFirestore().collection("estabelecimentos").limit(1).get();
+    return resposta.status(200).json({ pronto: true, firestore: "conectado" });
+  } catch {
+    return resposta.status(503).json({ pronto: false, firestore: "indisponivel" });
+  }
+});
+
+aplicacao.use("/api/cnes", rotasCnes);
+aplicacao.use("/api/geocoding", rotasGeocodificacao);
+aplicacao.use("/api/exams", rotasExames);
+aplicacao.use("/api/auth", rotasAutenticacao);
+aplicacao.use("/api/users", rotasUsuarios);
+aplicacao.use("/api/convenios", rotasConvenios);
+aplicacao.use("/api/clinics", rotasClinicas);
+aplicacao.use("/api/admin/clinics", rotasAdministracaoClinicas);
+
+aplicacao.use((requisicao, resposta) => resposta.status(404).json({
+  message: "Rota não encontrada.",
+  // Não devolve query strings: endereços e filtros podem conter dados pessoais.
+  path: requisicao.path
+}));
+
+aplicacao.use((erro, requisicao, resposta, _proximaFuncao) => {
+  const erroDeParse = erro.type === "entity.parse.failed";
+  const codigoStatus = erroDeParse ? 400
+    : Number.isInteger(erro.status) ? erro.status : 500;
+  if (codigoStatus >= 500) {
+    console.error("Falha ao processar solicitação:", {
+      requestId: requisicao.id,
+      codigo: erro.code || erro.name || "erro_interno"
+    });
+  }
+  return resposta.status(codigoStatus).json({
+    message: erroDeParse ? "O corpo da requisição contém JSON inválido."
+      : erro.type === "entity.too.large" ? "O corpo da requisição excede o limite permitido."
+        : codigoStatus >= 500 ? "Não foi possível processar a solicitação."
+          : erro.message || "Não foi possível processar a solicitação."
+  });
+});
+
+module.exports = aplicacao;

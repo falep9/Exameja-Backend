@@ -1,0 +1,40 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "usuarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "conveniosAceitos", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "usuarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uidUsuario", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "historico_ofertas_exames",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uidClinica", "order": "ASCENDING" },
+        { "fieldPath": "codigoExame", "order": "ASCENDING" },
+        { "fieldPath": "registradoEm", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
