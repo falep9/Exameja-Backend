@@ -4,6 +4,7 @@ const { calcularTransicaoClinica } = require("../utils/clinicStatus");
 
 const COLECAO_USUARIOS = "usuarios";
 const COLECAO_CPFS = "cpf_hashes";
+const COLECAO_CNPJS = "cnpj_hashes";
 const COLECAO_NOTIFICACOES = "notificacoes";
 
 function mensagemNotificacaoStatus(acao, motivo) {
@@ -28,30 +29,80 @@ async function buscarPerfil(idUsuario) {
   return documento.exists ? documento.data() : null;
 }
 
-async function criarPerfil(idUsuario, perfil) {
+async function salvarCoordenadasClinica(uidClinica, endereco, latitude, longitude) {
+  const banco = obterBancoFirestore();
+  const referencia = banco.collection(COLECAO_USUARIOS).doc(uidClinica);
+  await banco.runTransaction(async transacao => {
+    const perfil = await transacao.get(referencia);
+    if (!perfil.exists || perfil.get("tipo") !== "clinica" || perfil.get("endereco") !== endereco) return;
+    transacao.update(referencia, {
+      latitude,
+      longitude,
+      enderecoCoordenadas: endereco,
+      coordenadasAtualizadasEm: FieldValue.serverTimestamp()
+    });
+  });
+}
+
+async function criarPerfil(idUsuario, perfil, cpfHash = null, cnpjHash = null) {
   const banco = obterBancoFirestore();
   const colecao = banco.collection(COLECAO_USUARIOS);
   const referencia = colecao.doc(idUsuario);
   await banco.runTransaction(async transacao => {
-    if (perfil.cpfHash) {
-      const referenciaCpf = banco.collection(COLECAO_CPFS).doc(perfil.cpfHash);
+    const reservasParaCriar = [];
+    if (cpfHash) {
+      const referenciaCpf = banco.collection(COLECAO_CPFS).doc(cpfHash);
       const [reserva, perfilExistente] = await Promise.all([
         transacao.get(referenciaCpf),
-        transacao.get(colecao.where("cpfHash", "==", perfil.cpfHash).limit(1))
+        // Mantém compatibilidade com perfis legados que ainda guardam o HMAC no documento.
+        transacao.get(colecao.where("cpfHash", "==", cpfHash).limit(1))
       ]);
       if (reserva.exists || !perfilExistente.empty) {
         const erro = new Error("Não foi possível salvar a conta com os dados informados.");
         erro.status = 409;
         throw erro;
       }
-      transacao.create(referenciaCpf, { uid: idUsuario, criadoEm: FieldValue.serverTimestamp() });
+      reservasParaCriar.push(referenciaCpf);
+    }
+    if (cnpjHash) {
+      const referenciaCnpj = banco.collection(COLECAO_CNPJS).doc(cnpjHash);
+      const [reserva, perfilExistente] = await Promise.all([
+        transacao.get(referenciaCnpj),
+        transacao.get(colecao.where("cnpj", "==", perfil.cnpj).limit(1))
+      ]);
+      if (reserva.exists || !perfilExistente.empty) {
+        const erro = new Error("Já existe uma conta de clínica cadastrada com este CNPJ.");
+        erro.status = 409;
+        throw erro;
+      }
+      reservasParaCriar.push(referenciaCnpj);
+    }
+    for (const reserva of reservasParaCriar) {
+      transacao.create(reserva, { uid: idUsuario, criadoEm: FieldValue.serverTimestamp() });
     }
     transacao.create(referencia, perfil);
   });
 }
 
 async function excluirPerfil(idUsuario) {
-  await obterBancoFirestore().collection("usuarios").doc(idUsuario).delete();
+  const banco = obterBancoFirestore();
+  const referenciaPerfil = banco.collection(COLECAO_USUARIOS).doc(idUsuario);
+  const consultaReservasCpf = banco.collection(COLECAO_CPFS).where("uid", "==", idUsuario);
+  const consultaReservasCnpj = banco.collection(COLECAO_CNPJS).where("uid", "==", idUsuario);
+  await banco.runTransaction(async transacao => {
+    const [perfil, reservasCpf, reservasCnpj] = await Promise.all([
+      transacao.get(referenciaPerfil),
+      transacao.get(consultaReservasCpf),
+      transacao.get(consultaReservasCnpj)
+    ]);
+    if (perfil.exists) transacao.delete(referenciaPerfil);
+    for (const reserva of reservasCpf.docs) {
+      transacao.delete(banco.collection(COLECAO_CPFS).doc(reserva.id));
+    }
+    for (const reserva of reservasCnpj.docs) {
+      transacao.delete(banco.collection(COLECAO_CNPJS).doc(reserva.id));
+    }
+  });
 }
 
 async function atualizarPerfil(idUsuario, atualizacao) {
@@ -64,39 +115,6 @@ async function atualizarPerfil(idUsuario, atualizacao) {
     const perfilSnapshot = await transacao.get(referencia);
     if (!perfilSnapshot.exists) return;
 
-    if (atualizacao.cpfHash) {
-      const hashAnterior = perfilSnapshot.get("cpfHash");
-      if (hashAnterior === atualizacao.cpfHash) {
-        transacao.update(referencia, { ...atualizacao, atualizadoEm: FieldValue.serverTimestamp() });
-        return;
-      }
-      const referenciaNova = banco.collection(COLECAO_CPFS).doc(atualizacao.cpfHash);
-      const referenciaAnterior = hashAnterior
-        ? banco.collection(COLECAO_CPFS).doc(hashAnterior)
-        : null;
-      const leituras = [
-        transacao.get(referenciaNova),
-        transacao.get(colecao.where("cpfHash", "==", atualizacao.cpfHash).limit(2))
-      ];
-      if (referenciaAnterior && hashAnterior !== atualizacao.cpfHash) {
-        leituras.push(transacao.get(referenciaAnterior));
-      }
-      const [reservaNova, perfisExistentes, reservaAnterior] = await Promise.all(leituras);
-      const pertenceAOutroUsuario = reservaNova.exists && reservaNova.get("uid") !== idUsuario;
-      const perfilDeOutroUsuario = perfisExistentes.docs.some(documento => documento.id !== idUsuario);
-      if (pertenceAOutroUsuario || perfilDeOutroUsuario) {
-        const erro = new Error("Não foi possível salvar o perfil com os dados informados.");
-        erro.status = 409;
-        throw erro;
-      }
-
-      if (!reservaNova.exists) {
-        transacao.create(referenciaNova, { uid: idUsuario, criadoEm: FieldValue.serverTimestamp() });
-      }
-      if (referenciaAnterior && reservaAnterior?.exists && reservaAnterior.get("uid") === idUsuario) {
-        transacao.delete(referenciaAnterior);
-      }
-    }
     const statusAnterior = perfilSnapshot.get("status");
     const mudouStatus = atualizacao.status && atualizacao.status !== statusAnterior;
     if (mudouStatus && perfilSnapshot.get("tipo") === "clinica") {
@@ -247,6 +265,7 @@ async function marcarNotificacaoComoLida(uidUsuario, idNotificacao) {
 
 module.exports = {
   buscarPerfil,
+  salvarCoordenadasClinica,
   criarPerfil,
   excluirPerfil,
   atualizarPerfil,

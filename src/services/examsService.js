@@ -79,6 +79,16 @@ async function buscarCatalogoExames({ termo, pagina = 1, limite = 20 }) {
   }
 }
 
+async function buscarExamePorCodigo(codigo) {
+  const resultado = await buscarCatalogoExames({ termo: codigo, pagina: 1, limite: 100 });
+  const exame = resultado.dados.find(item => String(item.codigo) === codigo);
+  return exame ? {
+    codigo: String(exame.codigo),
+    nome: String(exame.descricao),
+    tabela: exame.tabela || "TUSS"
+  } : null;
+}
+
 async function buscarProducaoSUS({ ano, competencia, municipio, cnes, limite = 100, deslocamento = 0 }) {
   const url = new URL("/assistencia-a-saude/sia-procedimentos-ambulatoriais", URL_API_SUS);
   if (ano) url.searchParams.set("nu_ano", String(ano));
@@ -89,15 +99,23 @@ async function buscarProducaoSUS({ ano, competencia, municipio, cnes, limite = 1
   url.searchParams.set("offset", String(deslocamento));
   const bruto = await getJson(url, { service: "a API de Dados Abertos do Ministério da Saúde" });
   const registros = extrairLista(bruto, "A API de Dados Abertos do Ministério da Saúde");
+  const codigosCnes = registros.map(codigoCnesDoRegistro).filter(Boolean);
+  const estabelecimentos = await buscarEstabelecimentosPorCodigos(codigosCnes);
+  const estabelecimentosPorCodigo = new Map(estabelecimentos.map(item => [item.codigoCnes, item.estabelecimento]));
   return {
     origem: "Ministério da Saúde - SIA/SUS",
     naturezaDosValores: "Valores aprovados pelo SUS; não são preços de clínicas particulares.",
     consultadoEm: new Date().toISOString(),
-    dados: registros.map(registro => ({
-      ...registro,
-      origem: "Ministério da Saúde - SIA/SUS",
-      naturezaDosValores: "Valores aprovados pelo SUS; não são preços de clínicas particulares."
-    })),
+    dados: registros.map(registro => {
+      const codigo = codigoCnesDoRegistro(registro);
+      return {
+        ...registro,
+        origem: "Ministério da Saúde - SIA/SUS",
+        naturezaDosValores: "Valores aprovados pelo SUS; não são preços de clínicas particulares.",
+        estabelecimento: codigo ? estabelecimentosPorCodigo.get(codigo) || null : null
+      };
+    }),
+    estabelecimentos,
     limit: limite,
     offset: deslocamento,
     total: bruto.total ?? bruto.total_count ?? bruto.count ?? null
@@ -109,53 +127,4 @@ function codigoCnesDoRegistro(registro) {
   return valor === undefined || valor === null ? null : String(valor);
 }
 
-async function buscarExamesIntegrado({ termo, pagina = 1, limite = 20, ano, competencia, municipio, cnes, offset = 0 }) {
-  const possuiFiltroSUS = Boolean(ano || competencia || municipio || cnes);
-  if (!possuiFiltroSUS) {
-    return {
-      termo,
-      catalogo: await buscarCatalogoExames({ termo, pagina, limite }),
-      producaoSus: null,
-      estabelecimentos: [],
-      observacao: "Informe ano ou competência e município ou CNES para consultar produção SUS. A TUSS não é vinculada automaticamente aos códigos SIGTAP."
-    };
-  }
-
-  if (limite > 20) {
-    const erro = new Error("A busca integrada aceita no máximo 20 resultados por página para limitar consultas CNES.");
-    erro.status = 400;
-    throw erro;
-  }
-
-  if ((!ano && !competencia) || (!municipio && !cnes)) {
-    const erro = new Error("Para incluir produção SUS, informe ano ou competência e também município ou CNES.");
-    erro.status = 400;
-    throw erro;
-  }
-
-  const [catalogo, producaoSus] = await Promise.all([
-    buscarCatalogoExames({ termo, pagina, limite }),
-    buscarProducaoSUS({ ano, competencia, municipio, cnes, limite, deslocamento: offset })
-  ]);
-
-  const codigosCnes = producaoSus.dados.map(codigoCnesDoRegistro).filter(Boolean);
-  const estabelecimentos = await buscarEstabelecimentosPorCodigos(codigosCnes);
-  const estabelecimentosPorCodigo = new Map(estabelecimentos.map(item => [item.codigoCnes, item.estabelecimento]));
-  const producaoComEstabelecimentos = producaoSus.dados.map(registro => {
-    const codigo = codigoCnesDoRegistro(registro);
-    return {
-      ...registro,
-      estabelecimento: codigo ? estabelecimentosPorCodigo.get(codigo) || null : null
-    };
-  });
-
-  return {
-    termo,
-    catalogo,
-    producaoSus: { ...producaoSus, dados: producaoComEstabelecimentos },
-    estabelecimentos,
-    relacionamentoTussSus: "Não há correspondência automática entre código TUSS e procedimento SIA/SUS; os conjuntos são apresentados separadamente."
-  };
-}
-
-module.exports = { buscarCatalogoExames, buscarProducaoSUS, buscarExamesIntegrado, ErroApiExterna };
+module.exports = { buscarCatalogoExames, buscarExamePorCodigo, buscarProducaoSUS, ErroApiExterna };

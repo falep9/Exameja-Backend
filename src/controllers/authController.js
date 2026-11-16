@@ -2,6 +2,8 @@ const { registrar: registrarUsuario } = require("../services/authService");
 const { validarCadastro } = require("../validators/authValidator");
 const { obterAutenticacaoFirebase } = require("../config/firebase");
 const { buscarPerfil } = require("../repositories/usersRepository");
+const { validarEmail } = require("../validators/authValidator");
+const { reenviarVerificacaoEmail, enviarRedefinicaoSenha } = require("../services/firebaseEmailService");
 const {
   DURACAO_SESSAO_MS,
   COOKIE_CSRF,
@@ -83,4 +85,31 @@ function encerrarSessao(_requisicao, resposta) {
   return resposta.status(204).end();
 }
 
-module.exports = { registrar, criarSessao, obterTokenCsrf, encerrarSessao };
+async function recuperarSenha(requisicao, resposta, proximaFuncao) {
+  try {
+    const email = validarEmail(requisicao.body?.email);
+    try {
+      await enviarRedefinicaoSenha(email);
+    } catch (erro) {
+      // Respostas iguais para e-mails inexistentes evitam enumeração de contas.
+      if (!new Set(["EMAIL_NOT_FOUND", "USER_NOT_FOUND", "INVALID_EMAIL"]).has(erro.codigoFirebase)) throw erro;
+    }
+    resposta.set("Cache-Control", "no-store");
+    return resposta.status(200).json({ message: "Se houver uma conta associada a este e-mail, enviaremos as instruções para redefinir a senha." });
+  } catch (erro) {
+    return proximaFuncao(erro);
+  }
+}
+
+async function reenviarVerificacao(requisicao, resposta, proximaFuncao) {
+  try {
+    const email = validarEmail(requisicao.body?.email);
+    await reenviarVerificacaoEmail(email);
+    resposta.set("Cache-Control", "no-store");
+    return resposta.status(200).json({ message: "Se a conta existir e ainda não estiver verificada, enviaremos um novo link de verificação." });
+  } catch (erro) {
+    return proximaFuncao(erro);
+  }
+}
+
+module.exports = { registrar, criarSessao, obterTokenCsrf, encerrarSessao, recuperarSenha, reenviarVerificacao };

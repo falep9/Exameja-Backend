@@ -44,17 +44,30 @@ function validarSenha(valor) {
 
 function validarDocumento(valor, campo, tamanho) {
   const texto = textoObrigatorio(valor, campo, tamanho + 20);
-  if (!/^[\d.\-/\s]+$/.test(texto)) {
+  const formatoTextoValido = tamanho === 14
+    ? /^[a-z\d.\-/\s]+$/i.test(texto)
+    : /^[\d.\-/\s]+$/.test(texto);
+  if (!formatoTextoValido) {
     const erro = new Error(`Informe um ${campo} com formato e dígitos verificadores válidos.`);
     erro.status = 400;
     throw erro;
   }
-  const documento = texto.replace(/\D/g, "");
+  const documento = tamanho === 14
+    ? texto.replace(/[.\-/\s]/g, "").toUpperCase()
+    : texto.replace(/\D/g, "");
+  if (tamanho === 14 && !/^[A-Z0-9]{12}\d{2}$/.test(documento)) {
+    const erro = new Error(`Informe um ${campo} com formato e dígitos verificadores válidos.`);
+    erro.status = 400;
+    throw erro;
+  }
   const pesos = tamanho === 11
     ? [[10, 9, 8, 7, 6, 5, 4, 3, 2], [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]]
     : [[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]];
   const calcularDigito = (base, multiplicadores) => {
-    const resto = [...base].reduce((soma, digito, indice) => soma + Number(digito) * multiplicadores[indice], 0) % 11;
+    const resto = [...base].reduce((soma, caractere, indice) => {
+      const valor = tamanho === 14 ? caractere.charCodeAt(0) - 48 : Number(caractere);
+      return soma + valor * multiplicadores[indice];
+    }, 0) % 11;
     return resto < 2 ? 0 : 11 - resto;
   };
   const formatoValido = documento.length === tamanho

@@ -1,5 +1,5 @@
 const { createHash: criarHash } = require("node:crypto");
-const { obterBancoFirestore } = require("../config/firebase");
+const { obterBancoFirestore, firebaseEstaConfigurado } = require("../config/firebase");
 const { getJson } = require("../utils/externalApi");
 
 const URL_NOMINATIM = process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org/search";
@@ -18,19 +18,11 @@ function criarChaveCache(endereco) {
   return criarHash("sha256").update(enderecoNormalizado).digest("hex");
 }
 
-function firestoreEstaConfigurado() {
-  return Boolean(
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-      || process.env.GOOGLE_APPLICATION_CREDENTIALS
-      || (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
-  );
-}
-
 async function consultarCache(chave) {
   const itemEmMemoria = cacheEmMemoria.get(chave);
   if (itemEmMemoria && itemEmMemoria.expiraEm > Date.now()) return itemEmMemoria.resultado;
   if (itemEmMemoria) cacheEmMemoria.delete(chave);
-  if (!firestoreEstaConfigurado()) return undefined;
+  if (!firebaseEstaConfigurado()) return undefined;
 
   try {
     const documento = await obterBancoFirestore()
@@ -61,11 +53,10 @@ async function salvarNoCache(chave, endereco, resultado) {
   if (cacheEmMemoria.size > MAXIMO_ITENS_CACHE_MEMORIA) {
     cacheEmMemoria.delete(cacheEmMemoria.keys().next().value);
   }
-  if (!firestoreEstaConfigurado()) return;
+  if (!firebaseEstaConfigurado()) return;
 
   try {
     await obterBancoFirestore().collection("geocoding_cache").doc(chave).set({
-      endereco,
       resultado,
       atualizadoEm: new Date().toISOString(),
       expiraEm
@@ -102,7 +93,7 @@ function executarNaFila(tarefa) {
 }
 
 async function reservarHorarioGlobal() {
-  if (!firestoreEstaConfigurado()) return;
+  if (!firebaseEstaConfigurado()) return;
 
   const banco = obterBancoFirestore();
   const referencia = banco.collection("_controles_integracao").doc("nominatim");

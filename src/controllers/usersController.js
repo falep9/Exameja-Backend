@@ -1,7 +1,7 @@
-const { buscarPerfil, atualizarPerfil } = require("../repositories/usersRepository");
+const { buscarPerfil, atualizarPerfil, salvarCoordenadasClinica } = require("../repositories/usersRepository");
 const conveniosRepository = require("../repositories/conveniosRepository");
 const { validarAtualizacaoPerfil } = require("../validators/usersValidator");
-const { criarHashCpf } = require("../utils/cpf");
+const { geocodingEndereco } = require("../services/geocodingService");
 
 async function obterMeuPerfil(requisicao, resposta, proximaFuncao) {
   try {
@@ -18,7 +18,7 @@ async function obterMeuPerfil(requisicao, resposta, proximaFuncao) {
     };
     if (perfil.tipo === "cliente") {
       usuario.telefone = perfil.telefone;
-      usuario.cpfCadastrado = Boolean(perfil.cpfHash);
+      usuario.cpfCadastrado = true;
       usuario.convenios = Array.isArray(perfil.convenios) ? perfil.convenios : [];
     }
     if (perfil.tipo === "clinica") {
@@ -63,12 +63,19 @@ async function atualizarMeuPerfil(requisicao, resposta, proximaFuncao) {
         || Object.hasOwn(dados, "endereco")
         || Object.hasOwn(dados, "telefone"));
     if (requerReaprovacao) atualizacao.status = "pendente";
-    if (Object.hasOwn(dados, "cpf")) {
-      atualizacao.cpfHash = criarHashCpf(dados.cpf);
-      delete atualizacao.cpf;
-    }
     const perfilAtualizado = await atualizarPerfil(requisicao.usuario.uid, atualizacao);
     if (!perfilAtualizado) return resposta.status(404).json({ message: "Perfil não encontrado." });
+
+    if (perfilAtual.tipo === "clinica" && dados.endereco && dados.endereco !== perfilAtual.endereco) {
+      try {
+        const coordenadas = await geocodingEndereco(`${dados.endereco}, Brasil`);
+        if (coordenadas.encontrado) {
+          await salvarCoordenadasClinica(requisicao.usuario.uid, dados.endereco, coordenadas.latitude, coordenadas.longitude);
+        }
+      } catch {
+        // O perfil já foi salvo; a busca pode tentar geocodificar esse endereço depois.
+      }
+    }
 
     return resposta.status(200).json({
       message: requerReaprovacao
@@ -80,7 +87,7 @@ async function atualizarMeuPerfil(requisicao, resposta, proximaFuncao) {
         tipo: perfilAtualizado.tipo,
         status: perfilAtualizado.status,
         telefone: perfilAtualizado.telefone,
-        ...(perfilAtualizado.tipo === "cliente" ? { cpfCadastrado: Boolean(perfilAtualizado.cpfHash) } : {
+        ...(perfilAtualizado.tipo === "cliente" ? { cpfCadastrado: true } : {
           nomeFantasia: perfilAtualizado.nomeFantasia,
           endereco: perfilAtualizado.endereco
         }),

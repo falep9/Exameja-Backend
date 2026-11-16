@@ -14,11 +14,14 @@ for (const nome of variaveisFirebase) delete process.env[nome];
 
 const {
   normalizarEstabelecimento,
-  buscarEstabelecimentoPorCnes
+  buscarEstabelecimentoPorCnes,
+  buscarEstabelecimentosPorCodigos
 } = require("../src/services/cnesService");
 const { geocodingEndereco } = require("../src/services/geocodingService");
 const { listarEstabelecimentos } = require("../src/controllers/cnesController");
 const { buscarCatalogoExames, buscarProducaoSUS } = require("../src/services/examsService");
+const { listarProducaoSUS } = require("../src/controllers/examsController");
+const { estaNaCaixaDeBusca } = require("../src/services/clinicSearchService");
 
 const buscarOriginal = global.fetch;
 after(() => {
@@ -180,6 +183,45 @@ test("consulta e normaliza o catálogo TUSS com busca e paginação", async () =
   assert.equal(resultado.paginaAtual, 2);
 });
 
+test("exige período e localidade para consultar produção SUS", async () => {
+  const resposta = criarResposta();
+  let erroCapturado;
+  await listarProducaoSUS(
+    { query: {} },
+    resposta,
+    erro => { erroCapturado = erro; }
+  );
+  assert.equal(erroCapturado.status, 400);
+  assert.match(erroCapturado.message, /ano.*competencia/i);
+
+  erroCapturado = null;
+  await listarProducaoSUS(
+    { query: { ano: "2025" } },
+    resposta,
+    erro => { erroCapturado = erro; }
+  );
+  assert.equal(erroCapturado.status, 400);
+  assert.match(erroCapturado.message, /municipio.*cnes/i);
+});
+
+test("caixa geográfica elimina pontos distantes e trata longitude circular", () => {
+  assert.equal(estaNaCaixaDeBusca(
+    { latitude: -23.5, longitude: -46.6 },
+    { latitude: -23.51, longitude: -46.61 },
+    10
+  ), true);
+  assert.equal(estaNaCaixaDeBusca(
+    { latitude: -23.5, longitude: -46.6 },
+    { latitude: -24, longitude: -46.6 },
+    10
+  ), false);
+  assert.equal(estaNaCaixaDeBusca(
+    { latitude: 0, longitude: 179.99 },
+    { latitude: 0, longitude: -179.99 },
+    10
+  ), true);
+});
+
 test("consulta produção ambulatorial SUS sem apresentar valor como preço particular", async () => {
   let urlConsultada;
   global.fetch = async url => {
@@ -195,4 +237,47 @@ test("consulta produção ambulatorial SUS sem apresentar valor como preço part
   assert.equal(urlConsultada.searchParams.get("offset"), "100");
   assert.match(resultado.naturezaDosValores, /não são preços de clínicas particulares/i);
   assert.match(resultado.dados[0].naturezaDosValores, /valores aprovados pelo SUS/i);
+});
+
+test("enriquece produção SUS com o estabelecimento correspondente do CNES", async () => {
+  const chamadas = [];
+  global.fetch = async url => {
+    const endereco = String(url);
+    chamadas.push(endereco);
+    if (endereco.includes("sia-procedimentos-ambulatoriais")) {
+      return new Response(JSON.stringify({ dados: [{ co_cnes: "7654322", procedimento: "Exame SUS" }] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      codigo_cnes: 7654322,
+      nome_fantasia: "Laboratório Público",
+      endereco_estabelecimento: "Rua da Saúde",
+      municipio: "São Paulo",
+      uf: "SP"
+    }), { status: 200 });
+  };
+
+  const resultado = await buscarProducaoSUS({ ano: 2025, municipio: 3550308, limite: 1 });
+
+  assert.equal(chamadas.length, 2);
+  assert.equal(resultado.dados[0].estabelecimento.nome, "Laboratório Público");
+  assert.equal(resultado.dados[0].estabelecimento.codigoCnes, "7654322");
+  assert.equal(resultado.estabelecimentos.length, 1);
+});
+
+test("reaproveita o estabelecimento CNES em consultas repetidas", async () => {
+  let chamadasCnes = 0;
+  global.fetch = async () => {
+    chamadasCnes += 1;
+    return new Response(JSON.stringify({
+      codigo_cnes: 7654323,
+      nome_fantasia: "Estabelecimento em cache"
+    }), { status: 200 });
+  };
+
+  const primeira = await buscarEstabelecimentosPorCodigos(["7654323"]);
+  const segunda = await buscarEstabelecimentosPorCodigos(["7654323"]);
+
+  assert.equal(chamadasCnes, 1);
+  assert.equal(primeira[0].estabelecimento.nome, "Estabelecimento em cache");
+  assert.equal(segunda[0].estabelecimento.nome, "Estabelecimento em cache");
 });
