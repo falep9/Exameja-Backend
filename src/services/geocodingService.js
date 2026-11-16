@@ -12,6 +12,7 @@ const cacheEmMemoria = new Map();
 let horarioUltimaConsulta = 0;
 let filaConsultas = Promise.resolve();
 let quantidadeConsultasPendentes = 0;
+let avisouLimitadorGlobalIndisponivel = false;
 
 function criarChaveCache(endereco) {
   const enderecoNormalizado = endereco.trim().toLocaleLowerCase("pt-BR");
@@ -95,24 +96,32 @@ function executarNaFila(tarefa) {
 async function reservarHorarioGlobal() {
   if (!firebaseEstaConfigurado()) return;
 
-  const banco = obterBancoFirestore();
-  const referencia = banco.collection("_controles_integracao").doc("nominatim");
-  const horarioReservado = await banco.runTransaction(async transacao => {
-    const documento = await transacao.get(referencia);
-    const dadosControle = documento.exists ? documento.data() : {};
-    const horarioAgora = Date.now();
-    const horarioPermitido = Math.max(horarioAgora, dadosControle.proximaConsultaEm || 0);
+  try {
+    const banco = obterBancoFirestore();
+    const referencia = banco.collection("_controles_integracao").doc("nominatim");
+    const horarioReservado = await banco.runTransaction(async transacao => {
+      const documento = await transacao.get(referencia);
+      const dadosControle = documento.exists ? documento.data() : {};
+      const horarioAgora = Date.now();
+      const horarioPermitido = Math.max(horarioAgora, dadosControle.proximaConsultaEm || 0);
 
-    transacao.set(referencia, {
-      proximaConsultaEm: horarioPermitido + INTERVALO_MINIMO_MS,
-      atualizadoEm: new Date(horarioAgora).toISOString()
+      transacao.set(referencia, {
+        proximaConsultaEm: horarioPermitido + INTERVALO_MINIMO_MS,
+        atualizadoEm: new Date(horarioAgora).toISOString()
+      });
+      return horarioPermitido;
     });
-    return horarioPermitido;
-  });
+    avisouLimitadorGlobalIndisponivel = false;
 
-  const esperaNecessaria = Math.max(0, horarioReservado - Date.now());
-  if (esperaNecessaria > 0) {
-    await new Promise(resolver => setTimeout(resolver, esperaNecessaria));
+    const esperaNecessaria = Math.max(0, horarioReservado - Date.now());
+    if (esperaNecessaria > 0) {
+      await new Promise(resolver => setTimeout(resolver, esperaNecessaria));
+    }
+  } catch (erro) {
+    if (!avisouLimitadorGlobalIndisponivel) {
+      console.warn("Rate limit global do Nominatim indisponível; aplicando o limite local:", erro.code || erro.name);
+      avisouLimitadorGlobalIndisponivel = true;
+    }
   }
 }
 
