@@ -1,6 +1,6 @@
 # Exame Já — backend
 
-Esta API conecta o aplicativo aos cadastros, ao catálogo de exames e às informações de clínicas. A pessoa usa o aplicativo; o aplicativo conversa com o backend, que consulta e organiza os dados.
+Esta API conecta o site aos cadastros, ao catálogo de exames e às informações de clínicas. A pessoa usa o aplicativo; o site conversa com o backend, que consulta e organiza os dados.
 
 ## Como uma pessoa usa a busca
 
