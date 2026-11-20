@@ -43,6 +43,14 @@
       ]
     },
     {
+      "collectionGroup": "avaliacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clinicaUid", "order": "ASCENDING" },
+        { "fieldPath": "atualizadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "historico_ofertas_exames",
       "queryScope": "COLLECTION",
       "fields": [
