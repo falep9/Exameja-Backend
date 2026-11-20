@@ -2,33 +2,35 @@ const { FieldValue } = require("firebase-admin/firestore");
 const { obterAutenticacaoFirebase } = require("../config/firebase");
 const { criarPerfil, excluirPerfil } = require("../repositories/usersRepository");
 const { criarHashCpf } = require("../utils/cpf");
-const { consultarCnpjReceita } = require("./cnpjService");
+const { criarHashCnpj } = require("../utils/cnpj");
+const { enviarVerificacaoEmail } = require("./firebaseEmailService");
+const { consultarCnpj, normalizarRazaoSocial } = require("./cnpjService");
+const { geocodingEndereco } = require("./geocodingService");
 
 async function registrar(dados) {
   const auth = obterAutenticacaoFirebase();
   let usuario;
   let operacaoConcluida = false;
   try {
-    let cpfHash;
-    if (dados.tipo === "cliente") {
-      cpfHash = criarHashCpf(dados.cpf);
-    } else {
-      const cadastroOficial = await consultarCnpjReceita(dados.cnpj);
-      if (!cadastroOficial.encontrado) {
-        const erro = new Error("O CNPJ não foi localizado na consulta cadastral oficial.");
+    const cpfHash = dados.tipo === "cliente" ? criarHashCpf(dados.cpf) : null;
+    const cnpjHash = dados.tipo === "clinica" ? criarHashCnpj(dados.cnpj) : null;
+    let cadastroCnpj = null;
+    if (dados.tipo === "clinica") {
+      cadastroCnpj = await consultarCnpj(dados.cnpj);
+      if (!cadastroCnpj.encontrado) {
+        const erro = new Error("O CNPJ não foi localizado na consulta cadastral.");
         erro.status = 422;
         throw erro;
       }
-      const normalizarRazao = valor => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]/gi, "").toLocaleLowerCase("pt-BR");
-      const razaoOficial = normalizarRazao(cadastroOficial.razaoSocial || "");
-      const razaoInformada = normalizarRazao(dados.razaoSocial);
-      if (razaoOficial && razaoOficial !== razaoInformada) {
-        const erro = new Error("A razão social informada não corresponde ao cadastro oficial do CNPJ.");
+      if (normalizarRazaoSocial(cadastroCnpj.razaoSocial) !== normalizarRazaoSocial(dados.razaoSocial)) {
+        const erro = new Error("A razão social informada não corresponde ao cadastro do CNPJ.");
         erro.status = 422;
         throw erro;
       }
     }
+    const geocodificacaoPromise = dados.tipo === "clinica"
+      ? geocodingEndereco(`${dados.endereco}, Brasil`).catch(() => null)
+      : Promise.resolve(null);
     usuario = await auth.createUser({ email: dados.email, password: dados.senha, emailVerified: false });
     const agora = FieldValue.serverTimestamp();
     const perfil = {
@@ -40,7 +42,6 @@ async function registrar(dados) {
       atualizadoEm: agora
     };
     if (dados.tipo === "cliente") {
-      perfil.cpfHash = cpfHash;
       perfil.telefone = dados.telefone;
       perfil.convenios = [];
     } else {
@@ -49,7 +50,11 @@ async function registrar(dados) {
         razaoSocial: dados.razaoSocial,
         nomeFantasia: dados.nomeFantasia,
         cnpj: dados.cnpj,
-        consultaCnpj: { fonte: "Receita Federal via BrasilAPI", consultadoEm: agora },
+        consultaCnpj: {
+          fonte: "BrasilAPI",
+          razaoSocial: cadastroCnpj.razaoSocial,
+          consultadoEm: agora
+        },
         declaracaoVinculo: dados.declaracaoVinculo,
         declaracaoVinculoRecebidaEm: agora,
         telefone: dados.telefone,
@@ -57,8 +62,17 @@ async function registrar(dados) {
       });
       perfil.conveniosAceitos = [];
       if (dados.cnes) perfil.cnes = dados.cnes;
+      const coordenadas = await geocodificacaoPromise;
+      if (coordenadas?.encontrado) {
+        Object.assign(perfil, {
+          latitude: coordenadas.latitude,
+          longitude: coordenadas.longitude,
+          enderecoCoordenadas: dados.endereco
+        });
+      }
     }
-    await criarPerfil(usuario.uid, perfil);
+    await criarPerfil(usuario.uid, perfil, cpfHash, cnpjHash);
+    await enviarVerificacaoEmail(usuario.uid);
     operacaoConcluida = true;
     return {
       uid: usuario.uid,

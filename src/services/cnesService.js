@@ -1,7 +1,57 @@
 const API_CNES = "https://apidadosabertos.saude.gov.br";
-const { obterBancoFirestore } = require("../config/firebase");
+const { obterBancoFirestore, firebaseEstaConfigurado } = require("../config/firebase");
 const { geocodingEndereco } = require("./geocodingService");
 const { getJson, ErroApiExterna } = require("../utils/externalApi");
+
+const DURACAO_CACHE_CNES_MS = 24 * 60 * 60 * 1000;
+const MAXIMO_ITENS_CACHE_CNES_MEMORIA = 1000;
+const cacheCnesMemoria = new Map();
+
+function salvarCacheCnesMemoria(estabelecimento, atualizadoEm = Date.now()) {
+  if (!estabelecimento?.codigoCnes) return;
+  cacheCnesMemoria.delete(estabelecimento.codigoCnes);
+  cacheCnesMemoria.set(estabelecimento.codigoCnes, { estabelecimento, atualizadoEm });
+  if (cacheCnesMemoria.size > MAXIMO_ITENS_CACHE_CNES_MEMORIA) {
+    cacheCnesMemoria.delete(cacheCnesMemoria.keys().next().value);
+  }
+}
+
+async function consultarCacheCnes(codigos) {
+  const encontrados = new Map();
+  const ausentes = [];
+  for (const codigo of codigos) {
+    const item = cacheCnesMemoria.get(codigo);
+    if (item) {
+      encontrados.set(codigo, item);
+      cacheCnesMemoria.delete(codigo);
+      cacheCnesMemoria.set(codigo, item);
+    } else {
+      ausentes.push(codigo);
+    }
+  }
+
+  if (ausentes.length && firebaseEstaConfigurado()) {
+    try {
+      const banco = obterBancoFirestore();
+      const documentos = await banco.getAll(...ausentes.map(codigo => banco.collection("estabelecimentos").doc(codigo)));
+      for (const documento of documentos) {
+        if (!documento.exists) continue;
+        const dados = documento.data();
+        const atualizadoEm = Date.parse(dados.ultimaAtualizacao);
+        if (!Number.isFinite(atualizadoEm)) continue;
+        const item = {
+          estabelecimento: { ...normalizarEstabelecimento(dados), codigoCnes: String(dados.codigoCnes || documento.id) },
+          atualizadoEm
+        };
+        salvarCacheCnesMemoria(item.estabelecimento, atualizadoEm);
+        encontrados.set(documento.id, item);
+      }
+    } catch (erro) {
+      console.warn("Não foi possível consultar o cache CNES do Firestore:", erro.message);
+    }
+  }
+  return encontrados;
+}
 
 function extrairEstabelecimentos(dados) {
   if (Array.isArray(dados)) return dados;
@@ -32,8 +82,8 @@ function obterCoordenada(registro, nomesCampos) {
 }
 
 function normalizarEstabelecimento(registro) {
-  const codigoCnes = obterPrimeiroCampo(registro, ["codigo_cnes", "codigo_unidade", "cnes"]);
-  const nome = obterPrimeiroCampo(registro, ["nome_fantasia", "nome_estabelecimento", "nome"])
+  const codigoCnes = obterPrimeiroCampo(registro, ["codigo_cnes", "codigoCnes", "codigo_unidade", "cnes"]);
+  const nome = obterPrimeiroCampo(registro, ["nome_fantasia", "nomeFantasia", "nome_estabelecimento", "nome"])
     || obterPrimeiroCampo(registro, ["nome_razao_social"])
     || null;
   const logradouro = obterPrimeiroCampo(registro, ["logradouro", "endereco_estabelecimento", "descricao_logradouro"]);
@@ -48,9 +98,9 @@ function normalizarEstabelecimento(registro) {
     nome,
     endereco,
     municipio: obterPrimeiroCampo(registro, ["nome_municipio", "municipio", "descricao_municipio"]),
-    codigoMunicipio: obterPrimeiroCampo(registro, ["codigo_municipio"]),
+    codigoMunicipio: obterPrimeiroCampo(registro, ["codigo_municipio", "codigoMunicipio"]),
     uf: obterPrimeiroCampo(registro, ["uf", "sigla_uf", "uf_sigla"]),
-    codigoUf: obterPrimeiroCampo(registro, ["codigo_uf"]),
+    codigoUf: obterPrimeiroCampo(registro, ["codigo_uf", "codigoUf"]),
     cep: obterPrimeiroCampo(registro, ["codigo_cep", "cep", "codigo_cep_estabelecimento"]),
     telefone: obterPrimeiroCampo(registro, ["numero_telefone", "telefone", "numero_telefone_estabelecimento"]),
     latitude: obterCoordenada(registro, ["latitude_estabelecimento_decimo_grau", "latitude"]),
@@ -59,16 +109,9 @@ function normalizarEstabelecimento(registro) {
   };
 }
 
-function firestoreEstaConfigurado() {
-  return Boolean(
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-      || process.env.GOOGLE_APPLICATION_CREDENTIALS
-      || (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
-  );
-}
-
 async function salvarEstabelecimentos(estabelecimentos) {
-  if (!firestoreEstaConfigurado()) return;
+  for (const estabelecimento of estabelecimentos) salvarCacheCnesMemoria(estabelecimento);
+  if (!firebaseEstaConfigurado()) return;
 
   let banco;
   try {
@@ -142,23 +185,33 @@ async function buscarEstabelecimentoPorCnes(codigoCnes) {
 
 async function buscarEstabelecimentosPorCodigos(codigosCnes, { concorrencia = 4 } = {}) {
   const codigosUnicos = [...new Set(codigosCnes.filter(codigo => /^\d{1,10}$/.test(String(codigo))))];
-  const resultados = [];
-  for (let indice = 0; indice < codigosUnicos.length; indice += concorrencia) {
-    const grupo = codigosUnicos.slice(indice, indice + concorrencia);
+  const cache = await consultarCacheCnes(codigosUnicos);
+  const expiracao = Date.now() - DURACAO_CACHE_CNES_MS;
+  const paraConsultar = codigosUnicos.filter(codigo => !cache.has(codigo) || cache.get(codigo).atualizadoEm < expiracao);
+  const atualizados = new Map();
+  for (let indice = 0; indice < paraConsultar.length; indice += concorrencia) {
+    const grupo = paraConsultar.slice(indice, indice + concorrencia);
     const respostas = await Promise.allSettled(grupo.map(async codigo => {
       const bruto = await getJson(
         `${API_CNES}/cnes/estabelecimentos/${encodeURIComponent(codigo)}`,
         { service: "a API CNES" }
       );
       const [registro] = extrairEstabelecimentos(bruto);
-      return normalizarEstabelecimento(registro);
+      const estabelecimento = normalizarEstabelecimento(registro);
+      return { ...estabelecimento, codigoCnes: estabelecimento.codigoCnes || codigo };
     }));
-    resultados.push(...respostas.map((resposta, posicao) => ({
-      codigoCnes: grupo[posicao],
-      estabelecimento: resposta.status === "fulfilled" ? resposta.value : null
-    })));
+    respostas.forEach((resposta, posicao) => {
+      const codigo = grupo[posicao];
+      if (resposta.status === "fulfilled") atualizados.set(codigo, resposta.value);
+      else if (cache.has(codigo)) atualizados.set(codigo, cache.get(codigo).estabelecimento);
+    });
   }
-  return resultados;
+  const novos = [...atualizados.values()];
+  if (novos.length) await salvarEstabelecimentos(novos);
+  return codigosUnicos.map(codigo => ({
+    codigoCnes: codigo,
+    estabelecimento: atualizados.get(codigo) || cache.get(codigo)?.estabelecimento || null
+  }));
 }
 
 module.exports = {

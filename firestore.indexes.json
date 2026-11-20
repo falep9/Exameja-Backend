@@ -41,6 +41,15 @@
         { "fieldPath": "clinicaUid", "order": "ASCENDING" },
         { "fieldPath": "atualizadoEm", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "historico_ofertas_exames",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uidClinica", "order": "ASCENDING" },
+        { "fieldPath": "codigoExame", "order": "ASCENDING" },
+        { "fieldPath": "registradoEm", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

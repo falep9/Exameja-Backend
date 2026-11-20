@@ -37,8 +37,10 @@ async function getJsonResponse(url, { service, headers = {} }) {
     }
   } catch (error) {
     if (error instanceof ErroApiExterna) throw error;
-    const detalhe = error.name === "AbortError" ? `tempo limite de ${timeoutMs} ms excedido` : error.message;
-    throw new ErroApiExterna(`Não é possível se comunicar com ${service}: ${detalhe}`);
+    const detalhe = error.name === "AbortError"
+      ? `A consulta a ${service} excedeu o tempo limite.`
+      : `Não foi possível se comunicar com ${service}.`;
+    throw new ErroApiExterna(detalhe);
   } finally {
     clearTimeout(timer);
   }

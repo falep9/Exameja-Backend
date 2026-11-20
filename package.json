@@ -10,7 +10,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "dev:demo": "node scripts/demo.js",
+    "migrate:cpf-hashes": "node scripts/migrarHashesCpfLegados.js",
+    "admin:claim": "node scripts/gerenciarAdministrador.js",
+    "clinics:geocode": "node scripts/geocodificarClinicas.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

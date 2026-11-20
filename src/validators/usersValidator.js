@@ -1,4 +1,4 @@
-const { validarDocumento, validarTelefone, textoObrigatorio } = require("./authValidator");
+const { validarTelefone, textoObrigatorio } = require("./authValidator");
 const { validarIdsConvenios } = require("./conveniosValidator");
 
 function validarAtualizacaoPerfil(corpo, tipoUsuario, statusUsuario) {
@@ -9,7 +9,7 @@ function validarAtualizacaoPerfil(corpo, tipoUsuario, statusUsuario) {
   }
 
   const camposPermitidos = tipoUsuario === "cliente"
-    ? ["cpf", "telefone", "convenios"]
+    ? ["telefone", "convenios"]
     : ["nomeFantasia", "telefone", "endereco", ...(statusUsuario === "aprovada" ? ["conveniosAceitos"] : [])];
   const desconhecido = Object.keys(corpo).find(campo => !camposPermitidos.includes(campo));
   if (desconhecido) {
@@ -25,9 +25,6 @@ function validarAtualizacaoPerfil(corpo, tipoUsuario, statusUsuario) {
 
   const atualizacao = {};
   if (Object.hasOwn(corpo, "telefone")) atualizacao.telefone = validarTelefone(corpo.telefone);
-  if (tipoUsuario === "cliente" && Object.hasOwn(corpo, "cpf")) {
-    atualizacao.cpf = validarDocumento(corpo.cpf, "CPF", 11);
-  }
   if (tipoUsuario === "cliente" && Object.hasOwn(corpo, "convenios")) {
     atualizacao.convenios = validarIdsConvenios(corpo.convenios);
   }

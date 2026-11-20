@@ -98,6 +98,7 @@ const obterBancoOriginal = configFirebase.obterBancoFirestore;
 configFirebase.obterBancoFirestore = () => bancoFalso;
 const repositorio = require("../src/repositories/usersRepository");
 const conveniosRepository = require("../src/repositories/conveniosRepository");
+const { criarHashCnpj } = require("../src/utils/cnpj");
 
 after(() => {
   configFirebase.obterBancoFirestore = obterBancoOriginal;
@@ -145,4 +146,35 @@ test("busca de clínicas retorna somente contas aprovadas", async () => {
 
   const clinicas = await conveniosRepository.listarClinicasPorConvenios(["amil"]);
   assert.deepEqual(clinicas.map(clinica => clinica.uid), ["clinica-aprovada"]);
+});
+
+test("reserva CNPJ sem pontuação para impedir cadastros duplicados e libera no rollback", async () => {
+  const cnpj = "11222333000181";
+  const hash = criarHashCnpj(cnpj);
+  assert.equal(criarHashCnpj("11.222.333/0001-81"), hash);
+
+  await repositorio.criarPerfil("clinica-cnpj-1", {
+    uid: "clinica-cnpj-1", tipo: "clinica", cnpj
+  }, null, hash);
+  assert.equal(bancoFalso.documentos.get(`cnpj_hashes/${hash}`).uid, "clinica-cnpj-1");
+
+  await assert.rejects(repositorio.criarPerfil("clinica-cnpj-2", {
+    uid: "clinica-cnpj-2", tipo: "clinica", cnpj
+  }, null, hash), { status: 409 });
+
+  await repositorio.excluirPerfil("clinica-cnpj-1");
+  assert.equal(bancoFalso.documentos.has(`cnpj_hashes/${hash}`), false);
+});
+
+test("não permite cadastrar CNPJ duplicado em perfil legado sem reserva de hash", async () => {
+  const cnpj = "22333444000196";
+  const hash = criarHashCnpj(cnpj);
+  bancoFalso.documentos.set("usuarios/clinica-legada-cnpj", {
+    uid: "clinica-legada-cnpj", tipo: "clinica", cnpj
+  });
+
+  await assert.rejects(repositorio.criarPerfil("clinica-cnpj-nova", {
+    uid: "clinica-cnpj-nova", tipo: "clinica", cnpj
+  }, null, hash), { status: 409 });
+  assert.equal(bancoFalso.documentos.has(`cnpj_hashes/${hash}`), false);
 });

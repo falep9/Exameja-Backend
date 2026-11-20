@@ -16,6 +16,13 @@ const rotasConversas = require("./routes/conversationsRoutes");
 const { obterBancoFirestore } = require("./config/firebase");
 
 const aplicacao = express();
+const saltosProxyConfigurados = process.env.TRUST_PROXY_HOPS;
+if (saltosProxyConfigurados !== undefined && saltosProxyConfigurados !== "") {
+  if (!/^\d+$/.test(saltosProxyConfigurados) || Number(saltosProxyConfigurados) > 10) {
+    throw new Error("TRUST_PROXY_HOPS deve ser um inteiro de 0 a 10.");
+  }
+  aplicacao.set("trust proxy", Number(saltosProxyConfigurados));
+}
 const limiteCorpo = process.env.JSON_BODY_LIMIT || "32kb";
 const origensPermitidas = (process.env.CORS_ORIGINS || "")
   .split(",")
@@ -78,7 +85,8 @@ aplicacao.use("/api/conversations", rotasConversas);
 
 aplicacao.use((requisicao, resposta) => resposta.status(404).json({
   message: "Rota não encontrada.",
-  path: requisicao.originalUrl
+  // Não devolve query strings: endereços e filtros podem conter dados pessoais.
+  path: requisicao.path
 }));
 
 aplicacao.use((erro, requisicao, resposta, _proximaFuncao) => {
