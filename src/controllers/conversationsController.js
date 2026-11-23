@@ -4,6 +4,7 @@ const {
   listarMensagens: buscarMensagens,
   listarConversas: buscarConversas
 } = require("../services/conversationsService");
+const { emitirMensagem } = require("../sockets/chatSocket");
 
 async function iniciar(requisicao, resposta, proximaFuncao) {
   try {
@@ -24,6 +25,11 @@ async function enviar(requisicao, resposta, proximaFuncao) {
       requisicao.params.id,
       requisicao.body?.texto
     );
+    try {
+      emitirMensagem(requisicao.params.id, mensagem);
+    } catch (erro) {
+      console.error("Falha ao emitir mensagem do chat:", erro);
+    }
     return resposta.status(201).json(mensagem);
   } catch (erro) {
     return proximaFuncao(erro);
