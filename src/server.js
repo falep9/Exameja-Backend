@@ -1,9 +1,12 @@
 require("dotenv").config();
 
+const http = require("node:http");
 const aplicacao = require("./app");
 const { inicializarFirebase, firebaseEstaConfigurado } = require("./config/firebase");
+const { iniciarSocket } = require("./sockets/chatSocket");
 
 const porta = Number(process.env.PORT) || 3000;
+const servidorHttp = http.createServer(aplicacao);
 
 try {
   if (process.env.NODE_ENV === "production") {
@@ -18,7 +21,8 @@ try {
   }
   if (firebaseEstaConfigurado()) inicializarFirebase();
   else console.warn("Firebase sem credenciais; persistência no Firestore desabilitada.");
-  aplicacao.listen(porta, () => {
+  iniciarSocket(servidorHttp);
+  servidorHttp.listen(porta, () => {
     console.log(`A API do Exame Já está ouvindo na porta ${porta}.`);
   });
 } catch (erro) {

@@ -9,6 +9,8 @@ const buscarConversaOriginal = conversationsRepository.buscarConversa;
 const salvarMensagemOriginal = conversationsRepository.salvarMensagem;
 const listarMensagensOriginal = conversationsRepository.listarMensagens;
 const listarConversasOriginal = conversationsRepository.listarConversas;
+const chatSocket = require("../src/sockets/chatSocket");
+const emitirMensagemOriginal = chatSocket.emitirMensagem;
 
 let perfilClinica;
 let resultadoRepositorio;
@@ -23,6 +25,12 @@ let resultadoConversas;
 let erroListarMensagens;
 let chamadasListarMensagens;
 let chamadasListarConversas;
+let chamadasEmitirMensagem = [];
+let erroEmitirMensagem;
+chatSocket.emitirMensagem = (conversaId, mensagem) => {
+  chamadasEmitirMensagem.push({ conversaId, mensagem });
+  if (erroEmitirMensagem) throw erroEmitirMensagem;
+};
 usersRepository.buscarPerfil = async () => {
   chamadasBuscarPerfil += 1;
   return perfilClinica;
@@ -58,6 +66,7 @@ after(() => {
   conversationsRepository.salvarMensagem = salvarMensagemOriginal;
   conversationsRepository.listarMensagens = listarMensagensOriginal;
   conversationsRepository.listarConversas = listarConversasOriginal;
+  chatSocket.emitirMensagem = emitirMensagemOriginal;
 });
 
 function prepararTeste({ tipo = "cliente", clinica = { tipo: "clinica", status: "aprovada" } } = {}) {
@@ -116,6 +125,8 @@ function prepararEnvio({
   chamadasBuscarPerfil = 0;
   chamadasBuscarConversa = 0;
   dadosSalvos = null;
+  chamadasEmitirMensagem = [];
+  erroEmitirMensagem = null;
   return {
     usuario: { uid, tipo, administrador },
     params: { id: "cliente-1_clinica-1" },
@@ -240,6 +251,27 @@ test("envia mensagem aparada e responde 201 com a mensagem salva", async () => {
     remetenteUid: "cliente-1",
     texto: "Olá, gostaria de agendar."
   });
+  assert.deepEqual(chamadasEmitirMensagem, [{
+    conversaId: "cliente-1_clinica-1",
+    mensagem: mensagemSalva
+  }]);
+});
+
+test("mantém resposta 201 se a emissão da mensagem falhar", async () => {
+  const requisicao = prepararEnvio();
+  erroEmitirMensagem = new Error("Socket.IO indisponível");
+  const consoleErroOriginal = console.error;
+  console.error = () => {};
+  let resultado;
+  try {
+    resultado = await executarEnvio(requisicao);
+  } finally {
+    console.error = consoleErroOriginal;
+  }
+
+  assert.equal(resultado.erro, undefined);
+  assert.equal(resultado.resposta.codigo, 201);
+  assert.deepEqual(resultado.resposta.corpo, mensagemSalva);
 });
 
 test("responde 400 para texto vazio ou com mais de 1000 caracteres", async () => {
