@@ -10,10 +10,10 @@ const {
 } = require("../controllers/appointmentsController");
 
 const rotas = Router();
-rotas.use(autenticarUsuario, exigirContaAtiva, exigirClinicaAprovada);
-rotas.post("/", criar);
+rotas.use(autenticarUsuario, exigirContaAtiva);
+rotas.post("/", exigirClinicaAprovada, criar);
 rotas.get("/", listar);
 rotas.get("/:id", buscarPorId);
-rotas.put("/:id", atualizar);
+rotas.put("/:id", exigirClinicaAprovada, atualizar);
 
 module.exports = rotas;

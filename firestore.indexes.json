@@ -101,6 +101,22 @@
       ]
     },
     {
+      "collectionGroup": "horariosDisponiveis",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uidClinica", "order": "ASCENDING" },
+        { "fieldPath": "dataHora", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "avaliacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clinicaUid", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "agendamentos",
       "queryScope": "COLLECTION",
       "fields": [

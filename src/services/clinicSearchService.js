@@ -127,6 +127,8 @@ async function buscarClinicas({
         nomeFantasia: dadosClinica.clinica.nomeFantasia,
         endereco: dadosClinica.clinica.endereco,
         telefone: dadosClinica.clinica.telefone,
+        avaliacaoMedia: Number.isFinite(dadosClinica.clinica.avaliacaoMedia) ? dadosClinica.clinica.avaliacaoMedia : 0,
+        quantidadeAvaliacoes: Number.isSafeInteger(dadosClinica.clinica.quantidadeAvaliacoes) ? dadosClinica.clinica.quantidadeAvaliacoes : 0,
         latitude: dadosClinica.coordenadas.latitude,
         longitude: dadosClinica.coordenadas.longitude,
         distanciaKm: Number(distancia.toFixed(2)),

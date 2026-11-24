@@ -125,7 +125,7 @@ function validarAcao(corpo = {}) {
     throw criarErro("O corpo da requisição deve ser um objeto JSON.", 400);
   }
   const { acao, motivo } = corpo;
-  if (!["confirmar", "recusar", "cancelar"].includes(acao)) {
+  if (!["confirmar", "recusar", "cancelar", "concluir"].includes(acao)) {
     throw criarErro("Ação inválida.", 400);
   }
   if (motivo !== undefined && (typeof motivo !== "string" || motivo.trim().length > 300)) {
@@ -139,6 +139,9 @@ function validarAcao(corpo = {}) {
 
 async function atualizarAgendamento(usuario, id, corpo) {
   const { acao, motivo } = validarAcao(corpo);
+  if (acao === "concluir" && usuario.tipo !== "clinica") {
+    throw criarErro("Somente clínicas podem concluir agendamentos.", 403);
+  }
   return salvarAtualizacao({ usuario, id, acao, motivo });
 }
 

@@ -3,6 +3,7 @@ const { obterBancoFirestore } = require("../config/firebase");
 
 const COLECAO_AGENDAMENTOS = "agendamentos";
 const COLECAO_HORARIOS = "horariosOcupados";
+const COLECAO_HORARIOS_DISPONIVEIS = "horariosDisponiveis";
 
 function erroAgendamentoNaoEncontrado() {
   const erro = new Error("Agendamento não encontrado.");
@@ -20,7 +21,8 @@ function calcularNovoStatus(statusAtual, acao) {
   const transicoes = {
     confirmar: { origem: ["pendente"], destino: "confirmado" },
     recusar: { origem: ["pendente"], destino: "recusado" },
-    cancelar: { origem: ["pendente", "confirmado"], destino: "cancelado" }
+    cancelar: { origem: ["pendente", "confirmado"], destino: "cancelado" },
+    concluir: { origem: ["confirmado"], destino: "concluido" }
   };
   const transicao = transicoes[acao];
   if (!transicao || !transicao.origem.includes(statusAtual)) {
@@ -37,12 +39,16 @@ async function criarAgendamento(dados) {
   const dataIso = dados.dataHora.toDate().toISOString();
   const referenciaHorario = banco.collection(COLECAO_HORARIOS)
     .doc(`${dados.clinicaUid}_${dataIso}`);
+  const referenciaDisponibilidade = banco.collection(COLECAO_HORARIOS_DISPONIVEIS)
+    .doc(require("./availabilityRepository").idHorario(dados.clinicaUid, dados.dataHora));
   const agora = FieldValue.serverTimestamp();
 
   // A reserva e o agendamento são gravados juntos para evitar colisões.
   await banco.runTransaction(async transacao => {
-    const horario = await transacao.get(referenciaHorario);
-    if (horario.exists) {
+    const [horario, disponibilidade] = await Promise.all([
+      transacao.get(referenciaHorario), transacao.get(referenciaDisponibilidade)
+    ]);
+    if (horario.exists || !disponibilidade.exists) {
       const erro = new Error("Horário indisponível.");
       erro.status = 409;
       throw erro;
@@ -58,6 +64,7 @@ async function criarAgendamento(dados) {
       clinicaUid: dados.clinicaUid,
       dataHora: dados.dataHora
     });
+    transacao.delete(referenciaDisponibilidade);
   });
 
   const documento = await referenciaAgendamento.get();
@@ -98,11 +105,16 @@ async function atualizarAgendamento({ usuario, id, acao, motivo }) {
     if (!documento.exists) throw erroAgendamentoNaoEncontrado();
 
     const agendamento = documento.data();
+    const refHorario = banco.collection(COLECAO_HORARIOS)
+      .doc(`${agendamento.clinicaUid}_${agendamento.dataHora.toDate().toISOString()}`);
+    const horarioOcupado = await transacao.get(refHorario);
     const clinicaPodeAgir = ["confirmar", "recusar"].includes(acao)
       && usuario.tipo === "clinica" && usuario.uid === agendamento.clinicaUid;
     const clientePodeAgir = acao === "cancelar"
       && usuario.tipo === "cliente" && usuario.uid === agendamento.clienteUid;
-    if (!clinicaPodeAgir && !clientePodeAgir) throw erroAcessoNegado();
+    const clinicaPodeConcluir = acao === "concluir"
+      && usuario.tipo === "clinica" && usuario.uid === agendamento.clinicaUid;
+    if (!clinicaPodeAgir && !clientePodeAgir && !clinicaPodeConcluir) throw erroAcessoNegado();
 
     const novoStatus = calcularNovoStatus(agendamento.status, acao);
     const atualizacao = {
@@ -110,12 +122,21 @@ async function atualizarAgendamento({ usuario, id, acao, motivo }) {
       atualizadoEm: FieldValue.serverTimestamp(),
       ...(acao === "recusar" || acao === "cancelar" ? { motivo: motivo || null } : {})
     };
+    if (acao === "confirmar" && !horarioOcupado.exists) {
+      const erro = new Error("A reserva do horário não está mais ativa.");
+      erro.status = 409;
+      throw erro;
+    }
     transacao.update(referenciaAgendamento, atualizacao);
     if (acao === "recusar" || acao === "cancelar") {
-      const dataIso = agendamento.dataHora.toDate().toISOString();
-      const referenciaHorario = banco.collection(COLECAO_HORARIOS)
-        .doc(`${agendamento.clinicaUid}_${dataIso}`);
-      transacao.delete(referenciaHorario);
+      transacao.delete(refHorario);
+      const refDisponibilidade = banco.collection(COLECAO_HORARIOS_DISPONIVEIS)
+        .doc(require("./availabilityRepository").idHorario(agendamento.clinicaUid, agendamento.dataHora));
+      transacao.create(refDisponibilidade, {
+        uidClinica: agendamento.clinicaUid,
+        dataHora: agendamento.dataHora,
+        criadoEm: FieldValue.serverTimestamp()
+      });
     }
     return true;
   });
