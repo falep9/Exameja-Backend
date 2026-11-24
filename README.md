@@ -45,6 +45,18 @@ A clínica cria uma conta, confirma o e-mail e aguarda a aprovação. Depois, po
 
 As alterações de conta exigem sessão válida. O catálogo e as consultas externas têm limites de uso. Para consultar produção SUS, informe um ano ou competência e também município ou código CNES. Essa consulta é independente da busca por clínicas particulares; os dados CNES associados ficam em cache por até 24 horas.
 
+### Integração da busca com o mapa
+
+O mapa do aplicativo deve usar os mesmos resultados da busca: não há uma rota separada de mapa. Primeiro carregue o catálogo em `GET /api/exams?page=1&limit=100` e use o campo `codigo` do exame selecionado. Em seguida, chame `GET /api/clinics/search` com esse código e uma localização (endereço ou coordenadas). Por exemplo:
+
+```http
+GET /api/clinics/search?codigoExame=CODIGO_TUSS&latitude=-23.5505&longitude=-46.6333&raioKm=10&ordenar=distancia
+```
+
+Opcionalmente, use `convenioId` (ID ativo retornado por `GET /api/convenios`), `precoMinimo`, `precoMaximo`, `limit` e `offset`. A resposta contém `resultados`; cada item tem `clinica.latitude`, `clinica.longitude`, `clinica.endereco`, `clinica.distanciaKm`, `exame.nome` e `preco.valor`. Esses campos alimentam tanto os cartões quanto os marcadores do mapa. A rota aceita ordenação por `distancia` ou `preco`; não fornece avaliações nem ordenação por avaliação.
+
+O frontend atualmente presente no repositório relacionado usa outra rota (`/establishments`), identificadores de exame de mocks e os campos `lat`/`lng`. Para integração ponta a ponta, ele ainda precisa chamar as rotas documentadas acima com código TUSS e localização e mapear `clinica.latitude`/`longitude` para os campos consumidos pelo componente Leaflet. O backend não consegue inferir com segurança uma localização do usuário nem converter IDs de mocks em códigos TUSS.
+
 ## Como executar
 
 1. Instale as dependências com `npm install`.
