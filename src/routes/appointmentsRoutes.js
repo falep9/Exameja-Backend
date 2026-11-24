@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const autenticarUsuario = require("../middleware/autenticarUsuario");
 const exigirContaAtiva = require("../middleware/exigirContaAtiva");
+const exigirClinicaAprovada = require("../middleware/exigirClinicaAprovada");
 const {
   criar,
   listar,
@@ -9,7 +10,7 @@ const {
 } = require("../controllers/appointmentsController");
 
 const rotas = Router();
-rotas.use(autenticarUsuario, exigirContaAtiva);
+rotas.use(autenticarUsuario, exigirContaAtiva, exigirClinicaAprovada);
 rotas.post("/", criar);
 rotas.get("/", listar);
 rotas.get("/:id", buscarPorId);

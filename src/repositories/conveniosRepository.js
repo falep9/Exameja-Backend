@@ -1,4 +1,4 @@
-const { FieldValue } = require("firebase-admin/firestore");
+const { FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { obterBancoFirestore } = require("../config/firebase");
 
 const COLECAO = "convenios";
@@ -42,15 +42,32 @@ async function atualizar(id, campos) {
   return atualizado.exists ? { id: atualizado.id, ...atualizado.data() } : null;
 }
 
-async function listarClinicasPorConvenios(ids, limite = 50) {
-  if (!ids.length) return [];
-  const snapshot = await obterBancoFirestore().collection("usuarios")
+async function listarClinicasPorConvenios(ids, { limite = 20, cursor } = {}) {
+  if (!ids.length) return { clinicas: [], proximoCursor: null };
+  const colecao = obterBancoFirestore().collection("usuarios");
+  let consulta = colecao
     .where("tipo", "==", "clinica")
     .where("status", "==", "aprovada")
     .where("conveniosAceitos", "array-contains-any", ids)
-    .limit(limite)
-    .get();
-  return snapshot.docs.map(documento => ({ uid: documento.id, ...documento.data() }));
+    .orderBy(FieldPath.documentId());
+  if (cursor !== undefined) {
+    const documentoCursor = await colecao.doc(cursor).get();
+    const conveniosAceitos = documentoCursor.exists ? documentoCursor.get("conveniosAceitos") : [];
+    if (!documentoCursor.exists || documentoCursor.get("tipo") !== "clinica"
+      || documentoCursor.get("status") !== "aprovada"
+      || !Array.isArray(conveniosAceitos) || !conveniosAceitos.some(id => ids.includes(id))) {
+      const erro = new Error("Cursor de paginação não encontrado.");
+      erro.status = 400;
+      throw erro;
+    }
+    consulta = consulta.startAfter(documentoCursor);
+  }
+  const snapshot = await consulta.limit(limite + 1).get();
+  const documentos = snapshot.docs.slice(0, limite);
+  return {
+    clinicas: documentos.map(documento => ({ uid: documento.id, ...documento.data() })),
+    proximoCursor: snapshot.docs.length > limite ? documentos[documentos.length - 1].id : null
+  };
 }
 
 module.exports = { listarAtivos, buscarPorIds, criar, atualizar, listarClinicasPorConvenios };

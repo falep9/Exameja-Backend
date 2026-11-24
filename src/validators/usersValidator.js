@@ -9,7 +9,7 @@ function validarAtualizacaoPerfil(corpo, tipoUsuario, statusUsuario) {
   }
 
   const camposPermitidos = tipoUsuario === "cliente"
-    ? ["telefone", "convenios"]
+    ? ["nome", "telefone", "convenios"]
     : ["nomeFantasia", "telefone", "endereco", ...(statusUsuario === "aprovada" ? ["conveniosAceitos"] : [])];
   const desconhecido = Object.keys(corpo).find(campo => !camposPermitidos.includes(campo));
   if (desconhecido) {
@@ -24,6 +24,9 @@ function validarAtualizacaoPerfil(corpo, tipoUsuario, statusUsuario) {
   }
 
   const atualizacao = {};
+  if (tipoUsuario === "cliente" && Object.hasOwn(corpo, "nome")) {
+    atualizacao.nome = textoObrigatorio(corpo.nome, "nome", 120);
+  }
   if (Object.hasOwn(corpo, "telefone")) atualizacao.telefone = validarTelefone(corpo.telefone);
   if (tipoUsuario === "cliente" && Object.hasOwn(corpo, "convenios")) {
     atualizacao.convenios = validarIdsConvenios(corpo.convenios);

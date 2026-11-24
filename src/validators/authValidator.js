@@ -117,9 +117,10 @@ function validarDominioCorporativo(email, dominio) {
 function validarCadastro(dados) {
   const tipo = dados?.tipo;
   if (tipo === TIPOS_USUARIO.CLIENTE) {
-    validarCorpo(dados, ["tipo", "email", "senha", "cpf", "telefone"]);
+    validarCorpo(dados, ["tipo", "nome", "email", "senha", "cpf", "telefone"]);
     return {
       tipo,
+      nome: textoObrigatorio(dados.nome, "nome", 120),
       email: validarEmail(dados.email),
       senha: validarSenha(dados.senha),
       cpf: validarDocumento(dados.cpf, "CPF", 11),

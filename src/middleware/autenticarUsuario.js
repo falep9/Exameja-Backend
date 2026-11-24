@@ -3,15 +3,18 @@ const { buscarPerfil } = require("../repositories/usersRepository");
 const { COOKIE_SESSAO, lerCookies } = require("../utils/sessionCookies");
 
 async function autenticarUsuario(requisicao, resposta, proximaFuncao) {
+  const bearer = (requisicao.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
   const cookieSessao = lerCookies(requisicao)[COOKIE_SESSAO];
-  if (!cookieSessao) {
+  if (!bearer && !cookieSessao) {
     return resposta.status(401).json({ message: "Autenticação necessária." });
   }
   let token;
   try {
-    token = await obterAutenticacaoFirebase().verifySessionCookie(cookieSessao, true);
+    token = bearer
+      ? await obterAutenticacaoFirebase().verifyIdToken(bearer[1], true)
+      : await obterAutenticacaoFirebase().verifySessionCookie(cookieSessao, true);
   } catch (erro) {
-    if (["auth/session-cookie-expired", "auth/session-cookie-revoked", "auth/invalid-session-cookie", "auth/argument-error"].includes(erro.code)) {
+    if (["auth/session-cookie-expired", "auth/session-cookie-revoked", "auth/invalid-session-cookie", "auth/id-token-expired", "auth/id-token-revoked", "auth/invalid-id-token", "auth/argument-error"].includes(erro.code)) {
       return resposta.status(401).json({ message: "Token inválido ou expirado." });
     }
     return proximaFuncao(erro);

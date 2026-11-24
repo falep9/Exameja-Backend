@@ -1,6 +1,7 @@
 const { Server } = require("socket.io");
 const autenticarUsuario = require("../middleware/autenticarUsuario");
 const exigirContaAtiva = require("../middleware/exigirContaAtiva");
+const exigirClinicaAprovada = require("../middleware/exigirClinicaAprovada");
 const { buscarConversa } = require("../repositories/conversationsRepository");
 const { lerCookies } = require("../utils/sessionCookies");
 
@@ -87,6 +88,9 @@ function iniciarSocket(servidorHttp) {
 
       const contaAtiva = await executarMiddleware(exigirContaAtiva, requisicao);
       if (!contaAtiva.ok) return proximaFuncao(new Error(contaAtiva.mensagem || "Conta sem permissão para conectar."));
+
+      const clinicaAprovada = await executarMiddleware(exigirClinicaAprovada, requisicao);
+      if (!clinicaAprovada.ok) return proximaFuncao(new Error(clinicaAprovada.mensagem || "A clínica ainda não foi aprovada."));
 
       socket.usuario = requisicao.usuario;
       return proximaFuncao();

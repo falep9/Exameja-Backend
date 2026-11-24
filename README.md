@@ -30,6 +30,8 @@ A clínica cria uma conta, confirma o e-mail e aguarda a aprovação. Depois, po
 | Ação | Rota |
 |---|---|
 | Criar conta | `POST /api/auth/register` |
+| Entrar com e-mail e senha | `POST /api/auth/login` |
+| Restaurar sessão (JWT Bearer) | `GET /api/auth/me` |
 | Iniciar uma sessão segura | `POST /api/auth/session` |
 | Recuperar a senha | `POST /api/auth/password-reset` |
 | Solicitar novo e-mail de verificação | `POST /api/auth/email-verification` |
@@ -43,7 +45,15 @@ A clínica cria uma conta, confirma o e-mail e aguarda a aprovação. Depois, po
 | Criar ou atualizar uma oferta | `PUT /api/clinics/me/exams/:codigoExame` |
 | Desativar uma oferta | `DELETE /api/clinics/me/exams/:codigoExame` |
 
-As alterações de conta exigem sessão válida. O catálogo e as consultas externas têm limites de uso. Para consultar produção SUS, informe um ano ou competência e também município ou código CNES. Essa consulta é independente da busca por clínicas particulares; os dados CNES associados ficam em cache por até 24 horas.
+Requisições `POST`, `PUT`, `PATCH` ou `DELETE` sem cabeçalho Bearer exigem CSRF, inclusive login e cadastro: primeiro obtenha um token em `GET /api/auth/csrf` e envie o valor retornado em `X-CSRF-Token`. O login recebe `{ "email": "...", "senha": "..." }` e retorna `token`, `tokenType`, `expiresIn` (segundos) e `usuario` (`id`, `nome`, `email`, `tipo`). O JWT de identidade do Firebase expira em uma hora; ao expirar, o cliente deve autenticar novamente. Envie-o às rotas privadas como `Authorization: Bearer <token>`. `GET /api/auth/me` retorna os dados básicos atuais. O fluxo de sessão por cookie em `/api/auth/session` continua disponível.
+
+`POST /api/auth/logout` limpa os cookies da sessão. Quando recebe `Authorization: Bearer <token>`, revoga os tokens Firebase da conta; isso encerra também outras sessões e dispositivos dessa conta. O cliente deve descartar o token localmente.
+
+O cadastro de cliente exige `tipo: "cliente"`, `nome`, `email`, `senha`, `cpf` e `telefone`. O cadastro de clínica exige `tipo: "clinica"`, `email`, `senha`, `dominioCorporativo`, `razaoSocial`, `nomeFantasia`, `cnpj`, `telefone`, `endereco` e `declaracaoVinculo`; `cnes` é opcional. Erros usam `{ "message": "..." }`. A recuperação de senha está disponível em `POST /api/auth/password-reset`.
+
+Pacientes podem atualizar o nome pelo `PATCH /api/users/me` enviando `{ "nome": "..." }` (até 120 caracteres). Para perfis legados sem nome, as respostas de usuário mostram `Paciente` até o nome ser atualizado; clínicas sem nome fantasia usam `Clínica` como fallback.
+
+`GET /api/clinics/suggestions` aceita `limite` (1–50, padrão 20) e `cursor`; a resposta inclui `proximoCursor` para buscar a próxima página. As alterações de conta exigem autenticação válida. O catálogo e as consultas externas têm limites de uso. Para consultar produção SUS, informe um ano ou competência e também município ou código CNES. Essa consulta é independente da busca por clínicas particulares; os dados CNES associados ficam em cache por até 24 horas.
 
 ### Integração da busca com o mapa
 

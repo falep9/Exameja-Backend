@@ -6,6 +6,7 @@ const origensPermitidas = (process.env.CORS_ORIGINS || "")
 
 function protegerCsrf(requisicao, resposta, proximaFuncao) {
   if (METODOS_SEM_MUTACAO.has(requisicao.method)) return proximaFuncao();
+  if (/^Bearer\s+\S+$/i.test(requisicao.get("authorization") || "")) return proximaFuncao();
 
   const origem = requisicao.get("origin");
   const corsAbertoEmDesenvolvimento = process.env.NODE_ENV !== "production" && origensPermitidas.length === 0;

@@ -31,7 +31,8 @@ async function registrar(dados) {
     const geocodificacaoPromise = dados.tipo === "clinica"
       ? geocodingEndereco(`${dados.endereco}, Brasil`).catch(() => null)
       : Promise.resolve(null);
-    usuario = await auth.createUser({ email: dados.email, password: dados.senha, emailVerified: false });
+    usuario = await auth.createUser({ email: dados.email, password: dados.senha, emailVerified: false,
+      ...(dados.tipo === "cliente" ? { displayName: dados.nome } : { displayName: dados.nomeFantasia }) });
     const agora = FieldValue.serverTimestamp();
     const perfil = {
       uid: usuario.uid,
@@ -42,6 +43,7 @@ async function registrar(dados) {
       atualizadoEm: agora
     };
     if (dados.tipo === "cliente") {
+      perfil.nome = dados.nome;
       perfil.telefone = dados.telefone;
       perfil.convenios = [];
     } else {
@@ -78,6 +80,7 @@ async function registrar(dados) {
       uid: usuario.uid,
       email: usuario.email,
       tipo: dados.tipo,
+      nome: dados.nome || dados.nomeFantasia,
       status: perfil.status
     };
   } catch (erro) {
@@ -89,4 +92,51 @@ async function registrar(dados) {
   }
 }
 
-module.exports = { registrar };
+async function autenticar(email, senha) {
+  const chaveApi = process.env.FIREBASE_WEB_API_KEY;
+  if (!chaveApi) {
+    const erro = new Error("Login indisponível: FIREBASE_WEB_API_KEY não está configurada.");
+    erro.status = 503;
+    throw erro;
+  }
+  const controlador = new AbortController();
+  const temporizador = setTimeout(() => controlador.abort(), 8000);
+  let resposta;
+  let dados;
+  try {
+    resposta = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(chaveApi)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: senha, returnSecureToken: true }),
+      signal: controlador.signal
+    });
+    dados = await resposta.json().catch(erro => {
+      if (controlador.signal.aborted) throw erro;
+      return {};
+    });
+  } catch {
+    const erro = new Error("Não foi possível validar as credenciais agora.");
+    erro.status = 503;
+    throw erro;
+  } finally {
+    clearTimeout(temporizador);
+  }
+  if (!resposta.ok) {
+    const codigo = dados.error?.message;
+    if (["INVALID_PASSWORD", "EMAIL_NOT_FOUND", "INVALID_LOGIN_CREDENTIALS", "USER_DISABLED"].includes(codigo)) {
+      const erro = new Error("E-mail ou senha inválidos.");
+      erro.status = 401;
+      erro.code = codigo;
+      throw erro;
+    }
+    const erro = new Error(codigo === "TOO_MANY_ATTEMPTS_TRY_LATER"
+      ? "Muitas tentativas de login. Tente novamente mais tarde."
+      : "Não foi possível validar as credenciais agora.");
+    erro.status = codigo === "TOO_MANY_ATTEMPTS_TRY_LATER" ? 429 : 503;
+    erro.code = codigo;
+    throw erro;
+  }
+  return dados;
+}
+
+module.exports = { registrar, autenticar };

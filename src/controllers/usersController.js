@@ -2,6 +2,7 @@ const { buscarPerfil, atualizarPerfil, salvarCoordenadasClinica } = require("../
 const conveniosRepository = require("../repositories/conveniosRepository");
 const { validarAtualizacaoPerfil } = require("../validators/usersValidator");
 const { geocodingEndereco } = require("../services/geocodingService");
+const { obterNomeUsuario } = require("../utils/nomeUsuario");
 
 async function obterMeuPerfil(requisicao, resposta, proximaFuncao) {
   try {
@@ -9,7 +10,9 @@ async function obterMeuPerfil(requisicao, resposta, proximaFuncao) {
     if (!perfil) return resposta.status(404).json({ message: "Perfil não encontrado." });
     const usuario = {
       uid: perfil.uid,
+      id: perfil.uid,
       email: requisicao.usuario.email,
+      nome: obterNomeUsuario(perfil),
       tipo: perfil.tipo,
       status: perfil.status,
       emailVerificado: requisicao.usuario.emailVerificado,
@@ -84,6 +87,7 @@ async function atualizarMeuPerfil(requisicao, resposta, proximaFuncao) {
       usuario: {
         uid: perfilAtualizado.uid,
         email: requisicao.usuario.email,
+        nome: obterNomeUsuario(perfilAtualizado),
         tipo: perfilAtualizado.tipo,
         status: perfilAtualizado.status,
         telefone: perfilAtualizado.telefone,

@@ -145,7 +145,8 @@ test("busca de clínicas retorna somente contas aprovadas", async () => {
   });
 
   const clinicas = await conveniosRepository.listarClinicasPorConvenios(["amil"]);
-  assert.deepEqual(clinicas.map(clinica => clinica.uid), ["clinica-aprovada"]);
+  assert.deepEqual(clinicas.clinicas.map(clinica => clinica.uid), ["clinica-aprovada"]);
+  assert.equal(clinicas.proximoCursor, null);
 });
 
 test("reserva CNPJ sem pontuação para impedir cadastros duplicados e libera no rollback", async () => {

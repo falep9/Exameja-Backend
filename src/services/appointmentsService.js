@@ -32,6 +32,9 @@ function validarDataHora(valor) {
     throw criarErro("Informe uma data e hora ISO válida no futuro.", 400);
   }
   data.setUTCSeconds(0, 0);
+  if (data.getTime() <= Date.now()) {
+    throw criarErro("O horário do agendamento precisa estar no futuro após o ajuste para o minuto.", 400);
+  }
   return data;
 }
 
@@ -58,6 +61,9 @@ function validarPaginacao({ limite, cursor }) {
 async function criarAgendamento(usuario, corpo = {}) {
   if (usuario.tipo !== "cliente") {
     throw criarErro("Somente clientes podem criar agendamentos.", 403);
+  }
+  if (!corpo || typeof corpo !== "object" || Array.isArray(corpo)) {
+    throw criarErro("O corpo da requisição deve ser um objeto JSON.", 400);
   }
   const { clinicaUid, nomeExame, codigoExame, dataHora } = corpo;
   if (typeof clinicaUid !== "string" || !clinicaUid.trim()) {
@@ -115,6 +121,9 @@ async function buscarAgendamento(usuario, id) {
 }
 
 function validarAcao(corpo = {}) {
+  if (!corpo || typeof corpo !== "object" || Array.isArray(corpo)) {
+    throw criarErro("O corpo da requisição deve ser um objeto JSON.", 400);
+  }
   const { acao, motivo } = corpo;
   if (!["confirmar", "recusar", "cancelar"].includes(acao)) {
     throw criarErro("Ação inválida.", 400);
