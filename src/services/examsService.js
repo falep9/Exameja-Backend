@@ -1,5 +1,5 @@
 const URL_TUSS = process.env.ANS_TUSS_API_URL
-  || "https://consulta-ocl.apps.sa-1a.mendixcloud.com/rest/oclservice/ANS/concepts/tuss-43";
+  || "https://consulta-ocl.apps.sa-1a.mendixcloud.com/rest/oclservice/ANS/concepts/tuss-22";
 const URL_API_SUS = process.env.MINISTERIO_SAUDE_API_URL || "https://apidadosabertos.saude.gov.br";
 const DURACAO_CACHE_TUSS_MS = 6 * 60 * 60 * 1000;
 const MAXIMO_ITENS_CACHE_TUSS = 250;
