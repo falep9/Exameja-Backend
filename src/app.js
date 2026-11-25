@@ -114,7 +114,9 @@ aplicacao.use((erro, requisicao, resposta, _proximaFuncao) => {
   if (codigoStatus >= 500) {
     console.error("Falha ao processar solicitação:", {
       requestId: requisicao.id,
-      codigo: erro.codigoPublico || erro.code || erro.name || "erro_interno"
+      codigo: erro.codigoPublico || erro.code || erro.name || "erro_interno",
+      mensagem: erro.message,
+      stack: erro.stack
     });
   }
   return resposta.status(codigoStatus).json({
