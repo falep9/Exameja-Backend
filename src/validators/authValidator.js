@@ -42,6 +42,15 @@ function validarSenha(valor) {
   return valor;
 }
 
+function validarSenhaLogin(valor) {
+  if (typeof valor !== "string" || valor.length === 0 || valor.length > 128) {
+    const erro = new Error("Informe uma senha com até 128 caracteres.");
+    erro.status = 400;
+    throw erro;
+  }
+  return valor;
+}
+
 function validarDocumento(valor, campo, tamanho) {
   const texto = textoObrigatorio(valor, campo, tamanho + 20);
   const formatoTextoValido = tamanho === 14
@@ -162,4 +171,4 @@ function validarCadastro(dados) {
   throw erro;
 }
 
-module.exports = { TIPOS_USUARIO, validarCadastro, validarEmail, validarDocumento, validarTelefone, textoObrigatorio };
+module.exports = { TIPOS_USUARIO, validarCadastro, validarEmail, validarSenhaLogin, validarDocumento, validarTelefone, textoObrigatorio };

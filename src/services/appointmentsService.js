@@ -1,5 +1,6 @@
 const { Timestamp } = require("firebase-admin/firestore");
 const { buscarPerfil } = require("../repositories/usersRepository");
+const reviewsRepository = require("../repositories/reviewsRepository");
 const {
   criarAgendamento: salvarAgendamento,
   listarAgendamentos: buscarAgendamentos,
@@ -117,7 +118,10 @@ async function buscarAgendamento(usuario, id) {
     && usuario.uid !== agendamento.clinicaUid) {
     throw criarErro("Somente participantes ou administradores podem acessar o agendamento.", 403);
   }
-  return agendamento;
+  return {
+    ...agendamento,
+    avaliado: await reviewsRepository.existeParaAgendamento(id)
+  };
 }
 
 function validarAcao(corpo = {}) {

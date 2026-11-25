@@ -1,6 +1,11 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { validarDocumento, validarEmail, validarCadastro } = require("../src/validators/authValidator");
+const { validarDocumento, validarEmail, validarCadastro, validarSenhaLogin } = require("../src/validators/authValidator");
+
+test("login aceita senha legada menor que a política mínima de cadastro", () => {
+  assert.equal(validarSenhaLogin("abc123"), "abc123");
+  assert.throws(() => validarSenhaLogin(""), { status: 400 });
+});
 
 test("valida e normaliza CPF e CNPJ com dígitos verificadores", () => {
   assert.equal(validarDocumento("529.982.247-25", "CPF", 11), "52998224725");

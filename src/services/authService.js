@@ -1,5 +1,5 @@
 const { FieldValue } = require("firebase-admin/firestore");
-const { obterAutenticacaoFirebase } = require("../config/firebase");
+const firebaseConfig = require("../config/firebase");
 const { criarPerfil, excluirPerfil } = require("../repositories/usersRepository");
 const { criarHashCpf } = require("../utils/cpf");
 const { criarHashCnpj } = require("../utils/cnpj");
@@ -8,7 +8,7 @@ const { consultarCnpj, normalizarRazaoSocial } = require("./cnpjService");
 const { geocodingEndereco } = require("./geocodingService");
 
 async function registrar(dados) {
-  const auth = obterAutenticacaoFirebase();
+  const auth = firebaseConfig.obterAutenticacaoFirebase();
   let usuario;
   let operacaoConcluida = false;
   try {
@@ -95,8 +95,9 @@ async function registrar(dados) {
 async function autenticar(email, senha) {
   const chaveApi = process.env.FIREBASE_WEB_API_KEY;
   if (!chaveApi) {
-    const erro = new Error("Login indisponível: FIREBASE_WEB_API_KEY não está configurada.");
+    const erro = new Error("O serviço de login está temporariamente indisponível. Avise o suporte.");
     erro.status = 503;
+    erro.codigoPublico = "LOGIN_CONFIGURATION_ERROR";
     throw erro;
   }
   const controlador = new AbortController();
@@ -114,29 +115,73 @@ async function autenticar(email, senha) {
       if (controlador.signal.aborted) throw erro;
       return {};
     });
-  } catch {
-    const erro = new Error("Não foi possível validar as credenciais agora.");
+  } catch (falha) {
+    const erro = new Error(falha.name === "AbortError"
+      ? "O serviço de login demorou demais para responder. Tente novamente."
+      : "Não foi possível conectar ao serviço de login. Verifique a conexão e tente novamente.");
     erro.status = 503;
+    erro.codigoPublico = falha.name === "AbortError" ? "LOGIN_TIMEOUT" : "LOGIN_NETWORK_ERROR";
     throw erro;
   } finally {
     clearTimeout(temporizador);
   }
   if (!resposta.ok) {
     const codigo = dados.error?.message;
-    if (["INVALID_PASSWORD", "EMAIL_NOT_FOUND", "INVALID_LOGIN_CREDENTIALS", "USER_DISABLED"].includes(codigo)) {
+    if (["INVALID_PASSWORD", "EMAIL_NOT_FOUND", "INVALID_LOGIN_CREDENTIALS"].includes(codigo)) {
       const erro = new Error("E-mail ou senha inválidos.");
       erro.status = 401;
-      erro.code = codigo;
+      erro.code = "INVALID_CREDENTIALS";
       throw erro;
     }
-    const erro = new Error(codigo === "TOO_MANY_ATTEMPTS_TRY_LATER"
-      ? "Muitas tentativas de login. Tente novamente mais tarde."
-      : "Não foi possível validar as credenciais agora.");
-    erro.status = codigo === "TOO_MANY_ATTEMPTS_TRY_LATER" ? 429 : 503;
-    erro.code = codigo;
+    if (codigo === "USER_DISABLED") {
+      const erro = new Error("Esta conta está desativada. Entre em contato com o suporte.");
+      erro.status = 403;
+      erro.codigoPublico = "ACCOUNT_DISABLED";
+      throw erro;
+    }
+    if (codigo === "TOO_MANY_ATTEMPTS_TRY_LATER") {
+      const erro = new Error("Muitas tentativas de login. Aguarde alguns minutos e tente novamente.");
+      erro.status = 429;
+      erro.codigoPublico = "LOGIN_RATE_LIMITED";
+      throw erro;
+    }
+    const configuracaoInvalida = ["API_KEY_INVALID", "PROJECT_NOT_FOUND", "CONFIGURATION_NOT_FOUND"]
+      .includes(codigo);
+    const provedorDesativado = codigo === "OPERATION_NOT_ALLOWED";
+    const erro = new Error(provedorDesativado
+      ? "O login por e-mail e senha não está habilitado no Firebase Authentication. Avise o suporte."
+      : configuracaoInvalida
+        ? "A configuração do serviço de login está incorreta. Avise o suporte."
+        : "O serviço de login não conseguiu validar a solicitação. Tente novamente ou avise o suporte.");
+    erro.status = configuracaoInvalida || provedorDesativado ? 503 : 502;
+    erro.codigoPublico = provedorDesativado ? "LOGIN_PROVIDER_DISABLED"
+      : configuracaoInvalida ? "LOGIN_CONFIGURATION_ERROR" : "LOGIN_PROVIDER_ERROR";
     throw erro;
   }
-  return dados;
+  // signInWithPassword nem sempre inclui emailVerified na resposta; o Admin SDK
+  // é a fonte autoritativa do estado de verificação e da conta Firebase.
+  try {
+    const usuarioFirebase = await firebaseConfig.obterAutenticacaoFirebase().getUser(dados.localId);
+    if (usuarioFirebase.disabled) {
+      const erro = new Error("Esta conta está desativada. Entre em contato com o suporte.");
+      erro.status = 403;
+      erro.codigoPublico = "ACCOUNT_DISABLED";
+      throw erro;
+    }
+    return { ...dados, emailVerified: usuarioFirebase.emailVerified === true };
+  } catch (falha) {
+    if (falha.status) throw falha;
+    if (falha.code === "auth/user-not-found") {
+      const erro = new Error("E-mail ou senha inválidos.");
+      erro.status = 401;
+      erro.code = "INVALID_CREDENTIALS";
+      throw erro;
+    }
+    const erro = new Error("Não foi possível confirmar o estado da conta no serviço de autenticação. Tente novamente.");
+    erro.status = 503;
+    erro.codigoPublico = "LOGIN_PROFILE_CHECK_FAILED";
+    throw erro;
+  }
 }
 
 module.exports = { registrar, autenticar };

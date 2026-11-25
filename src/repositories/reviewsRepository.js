@@ -11,6 +11,12 @@ function erro(mensagem, status) {
   return resultado;
 }
 
+function erroAvaliacaoExistente() {
+  const resultado = erro("Este agendamento já foi avaliado.", 409);
+  resultado.codigoPublico = "REVIEW_ALREADY_EXISTS";
+  return resultado;
+}
+
 async function criar({ usuario, agendamentoId, nota, comentario }) {
   const banco = obterBancoFirestore();
   const refAgendamento = banco.collection(APPOINTMENTS).doc(agendamentoId);
@@ -21,11 +27,11 @@ async function criar({ usuario, agendamentoId, nota, comentario }) {
     if (!agendamento.exists) throw erro("Agendamento não encontrado.", 404);
     const dados = agendamento.data();
     if (dados.clienteUid !== usuario.uid || usuario.tipo !== "cliente") throw erro("Somente o paciente do agendamento pode avaliá-lo.", 403);
-    if (dados.status !== "concluido") throw erro("Só é possível avaliar um agendamento concluído.", 409);
     const [review, clinica] = await Promise.all([
       tx.get(refReview), tx.get(banco.collection(USERS).doc(dados.clinicaUid))
     ]);
-    if (review.exists) throw erro("Este agendamento já foi avaliado.", 409);
+    if (review.exists) throw erroAvaliacaoExistente();
+    if (dados.status !== "concluido") throw erro("Só é possível avaliar um agendamento concluído.", 409);
     if (!clinica.exists || clinica.get("tipo") !== "clinica") throw erro("Clínica não encontrada.", 404);
     const quantidade = Number.isSafeInteger(clinica.get("quantidadeAvaliacoes")) ? clinica.get("quantidadeAvaliacoes") : 0;
     const mediaAtual = Number.isFinite(clinica.get("avaliacaoMedia")) ? clinica.get("avaliacaoMedia") : 0;
@@ -43,6 +49,11 @@ async function criar({ usuario, agendamentoId, nota, comentario }) {
     });
   });
   return { id: agendamentoId, nota, ...(comentario ? { comentario } : {}) };
+}
+
+async function existeParaAgendamento(agendamentoId) {
+  const documento = await obterBancoFirestore().collection(REVIEWS).doc(agendamentoId).get();
+  return documento.exists;
 }
 
 async function listar(clinicaUid, { limite, cursor }) {
@@ -66,4 +77,4 @@ async function listar(clinicaUid, { limite, cursor }) {
   };
 }
 
-module.exports = { criar, listar };
+module.exports = { criar, listar, existeParaAgendamento };

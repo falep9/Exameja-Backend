@@ -259,8 +259,8 @@ test("impede administrador de listar", async () => {
 
 test("busca por id para dono e administrador, mas nega outro usuário", async () => {
   agendamentoBuscado = { id: "a1", clienteUid: "cliente-1", clinicaUid: "clinica-1" };
-  assert.equal(await buscarAgendamento({ uid: "cliente-1" }, "a1"), agendamentoBuscado);
-  assert.equal(await buscarAgendamento({ uid: "admin-1", administrador: true }, "a1"), agendamentoBuscado);
+  assert.deepEqual(await buscarAgendamento({ uid: "cliente-1" }, "a1"), { ...agendamentoBuscado, avaliado: false });
+  assert.deepEqual(await buscarAgendamento({ uid: "admin-1", administrador: true }, "a1"), { ...agendamentoBuscado, avaliado: false });
   await assert.rejects(buscarAgendamento({ uid: "outro" }, "a1"), erro => erro.status === 403);
 
   agendamentoBuscado = null;
@@ -274,7 +274,7 @@ test("GET por id responde com o agendamento", async () => {
   });
   assert.equal(erro, undefined);
   assert.equal(resposta.codigo, 200);
-  assert.deepEqual(resposta.corpo, agendamentoBuscado);
+  assert.deepEqual(resposta.corpo, { ...agendamentoBuscado, avaliado: false });
 });
 
 test("confirma e recusa pela clínica, exigindo motivo para recusar", async () => {

@@ -46,16 +46,21 @@ function validarOrigemCors(origem, callback) {
 
   const erro = new Error("A origem desta solicitação não está autorizada.");
   erro.status = 403;
+  erro.codigoPublico = "ORIGIN_NOT_ALLOWED";
   return callback(erro);
 }
 
 aplicacao.use(helmet());
-aplicacao.use(cors({ origin: validarOrigemCors, credentials: true }));
 aplicacao.use((requisicao, resposta, proximaFuncao) => {
   requisicao.id = randomUUID();
   resposta.set("X-Request-ID", requisicao.id);
   return proximaFuncao();
 });
+aplicacao.use(cors({
+  origin: validarOrigemCors,
+  credentials: true,
+  exposedHeaders: ["X-Request-ID", "Retry-After"]
+}));
 aplicacao.use(express.json({ limit: limiteCorpo }));
 aplicacao.use(express.urlencoded({ extended: false, limit: limiteCorpo }));
 morgan.token("safe-path", requisicao => requisicao.path);
@@ -95,6 +100,8 @@ aplicacao.use("/api/admin/reports", rotasAdministracaoDenuncias);
 aplicacao.use("/api/reports", rotasDenuncias);
 
 aplicacao.use((requisicao, resposta) => resposta.status(404).json({
+  code: "ROUTE_NOT_FOUND",
+  requestId: requisicao.id,
   message: "Rota não encontrada.",
   // Não devolve query strings: endereços e filtros podem conter dados pessoais.
   path: requisicao.path
@@ -107,10 +114,14 @@ aplicacao.use((erro, requisicao, resposta, _proximaFuncao) => {
   if (codigoStatus >= 500) {
     console.error("Falha ao processar solicitação:", {
       requestId: requisicao.id,
-      codigo: erro.code || erro.name || "erro_interno"
+      codigo: erro.codigoPublico || erro.code || erro.name || "erro_interno"
     });
   }
   return resposta.status(codigoStatus).json({
+    code: erro.codigoPublico || (erroDeParse ? "INVALID_JSON"
+      : erro.type === "entity.too.large" ? "REQUEST_TOO_LARGE"
+        : codigoStatus >= 500 ? "INTERNAL_ERROR" : "REQUEST_REJECTED"),
+    requestId: requisicao.id,
     message: erroDeParse ? "O corpo da requisição contém JSON inválido."
       : erro.type === "entity.too.large" ? "O corpo da requisição excede o limite permitido."
         : codigoStatus >= 500 ? "Não foi possível processar a solicitação."

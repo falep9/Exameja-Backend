@@ -27,10 +27,11 @@ function criarResposta() {
   };
 }
 
-function criarRequisicao({ method = "POST", ip = "127.0.0.1", tokenCookie, tokenHeader, origin } = {}) {
+function criarRequisicao({ method = "POST", path = "/api/test", ip = "127.0.0.1", tokenCookie, tokenHeader, origin } = {}) {
   const cookie = tokenCookie === undefined ? "" : `${COOKIE_CSRF}=${encodeURIComponent(tokenCookie)}`;
   return {
     method,
+    path,
     ip,
     socket: { remoteAddress: ip },
     get(nome) {
@@ -77,6 +78,17 @@ test("não exige CSRF em leitura e exige sessão para rotas protegidas", () => {
   const resposta = criarResposta();
   autenticarUsuario({ get: () => "" }, resposta, () => assert.fail("sem cookie não deve autenticar"));
   assert.equal(resposta.statusCodigo, 401);
+});
+
+test("login Bearer não exige CSRF, mas continua sujeito à validação de origem", () => {
+  let continuou = false;
+  protegerCsrf(criarRequisicao({ method: "POST", path: "/api/auth/login" }), criarResposta(), () => { continuou = true; });
+  assert.equal(continuou, true);
+
+  const resposta = criarResposta();
+  protegerCsrf(criarRequisicao({ method: "POST", path: "/api/auth/login", origin: "https://site-malicioso.test" }), resposta,
+    () => assert.fail("login deve continuar bloqueando origem não autorizada"));
+  assert.equal(resposta.statusCodigo, 403);
 });
 
 test("limitador retorna 429 e Retry-After depois do máximo configurado", () => {

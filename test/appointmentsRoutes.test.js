@@ -89,6 +89,8 @@ test("publica detalhes da clínica sem exigir sessão", async () => {
       nomeFantasia: "Clínica Teste",
       endereco: "Rua A, 10",
       telefone: "1133334444",
+      avaliacaoMedia: 0,
+      quantidadeAvaliacoes: 0,
       latitude: -23.5,
       longitude: -46.6,
       conveniosAceitos: [{ id: "amil", nome: "Amil" }],

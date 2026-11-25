@@ -27,7 +27,7 @@ function criarLimitador({ janelaMs, maximo, mensagem }) {
     }
     if (registro.total >= maximo) {
       resposta.set("Retry-After", String(Math.ceil((registro.inicio + janelaMs - agora) / 1000)));
-      return resposta.status(429).json({ message: mensagem });
+      return resposta.status(429).json({ code: "RATE_LIMITED", message: mensagem });
     }
     registro.total += 1;
     return proximaFuncao();

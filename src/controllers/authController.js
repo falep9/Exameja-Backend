@@ -1,5 +1,5 @@
 const { registrar: registrarUsuario, autenticar: autenticarUsuario } = require("../services/authService");
-const { validarCadastro, validarEmail, validarSenha } = require("../validators/authValidator");
+const { validarCadastro, validarEmail, validarSenhaLogin } = require("../validators/authValidator");
 const { obterAutenticacaoFirebase } = require("../config/firebase");
 const { buscarPerfil } = require("../repositories/usersRepository");
 const { obterNomeUsuario } = require("../utils/nomeUsuario");
@@ -52,15 +52,15 @@ async function registrar(requisicao, resposta, proximaFuncao) {
 async function login(requisicao, resposta, proximaFuncao) {
   try {
     const email = validarEmail(requisicao.body?.email);
-    const senha = validarSenha(requisicao.body?.senha);
+    const senha = validarSenhaLogin(requisicao.body?.senha);
     const credenciais = await autenticarUsuario(email, senha);
     const perfil = await buscarPerfil(credenciais.localId);
     if (!perfil || perfil.uid !== credenciais.localId || !["cliente", "clinica"].includes(perfil.tipo)) {
-      return resposta.status(403).json({ message: "O perfil da conta não está disponível." });
+      return resposta.status(403).json({ code: "ACCOUNT_PROFILE_MISSING", message: "Não encontramos um perfil válido para esta conta. Entre em contato com o suporte." });
     }
-    if (!credenciais.emailVerified) return resposta.status(403).json({ message: "Verifique seu e-mail antes de iniciar sessão." });
+    if (!credenciais.emailVerified) return resposta.status(403).json({ code: "EMAIL_NOT_VERIFIED", message: "Confirme seu e-mail antes de entrar. Se não recebeu a mensagem, solicite outro link em /api/auth/email-verification." });
     if (!ESTADOS_VALIDOS_POR_TIPO[perfil.tipo]?.has(perfil.status)) {
-      return resposta.status(403).json({ message: "O estado da conta não permite iniciar sessão." });
+      return resposta.status(403).json({ code: "ACCOUNT_STATE_INVALID", message: "O cadastro está com um estado que não permite entrar. Entre em contato com o suporte." });
     }
     resposta.set("Cache-Control", "no-store");
     return resposta.status(200).json({
@@ -70,7 +70,14 @@ async function login(requisicao, resposta, proximaFuncao) {
       usuario: { id: perfil.uid, uid: perfil.uid, nome: obterNomeUsuario(perfil), email: perfil.email, tipo: perfil.tipo }
     });
   } catch (erro) {
-    if (erro.status === 401) return resposta.status(401).json({ message: "E-mail ou senha inválidos." });
+    if (erro.status === 401) return resposta.status(401).json({ code: "INVALID_CREDENTIALS", message: "E-mail ou senha inválidos." });
+    if (erro.status === 429) return resposta.status(429).json({ code: "LOGIN_RATE_LIMITED", message: erro.message });
+    if (erro.status === 403 && erro.codigoPublico) return resposta.status(403).json({ code: erro.codigoPublico, message: erro.message });
+    if (erro.status === 502) return resposta.status(502).json({ code: erro.codigoPublico || "LOGIN_PROVIDER_ERROR", message: erro.message });
+    if (erro.status === 503) return resposta.status(503).json({
+      code: erro.codigoPublico || "LOGIN_SERVICE_UNAVAILABLE",
+      message: erro.message || "O serviço de login está temporariamente indisponível. Tente novamente em alguns minutos."
+    });
     return proximaFuncao(erro);
   }
 }
