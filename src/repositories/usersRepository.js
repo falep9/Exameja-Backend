@@ -1,6 +1,7 @@
 const { FieldValue } = require("firebase-admin/firestore");
 const { obterBancoFirestore } = require("../config/firebase");
 const { calcularTransicaoClinica } = require("../utils/clinicStatus");
+const { criarHashCnpj } = require("../utils/cnpj");
 
 const COLECAO_USUARIOS = "usuarios";
 const COLECAO_CPFS = "cpf_hashes";
@@ -114,6 +115,40 @@ async function atualizarPerfil(idUsuario, atualizacao) {
   await banco.runTransaction(async transacao => {
     const perfilSnapshot = await transacao.get(referencia);
     if (!perfilSnapshot.exists) return;
+
+    const perfilAntes = perfilSnapshot.data();
+    const alterandoCnpj = perfilAntes.tipo === "clinica"
+      && Object.hasOwn(atualizacao, "cnpj") && atualizacao.cnpj !== perfilAntes.cnpj;
+    if (perfilAntes.tipo === "clinica" && Object.hasOwn(atualizacao, "cnpj")) {
+      const hashNovo = criarHashCnpj(atualizacao.cnpj);
+      const referenciaReservaNova = banco.collection(COLECAO_CNPJS).doc(hashNovo);
+      const reservaNovaSnapshot = await transacao.get(referenciaReservaNova);
+      if (reservaNovaSnapshot.exists && reservaNovaSnapshot.get("uid") !== idUsuario) {
+        const erro = new Error("Já existe uma conta de clínica cadastrada com este CNPJ.");
+        erro.status = 409;
+        throw erro;
+      }
+      const perfilComCnpj = await transacao.get(
+        colecao.where("cnpj", "==", atualizacao.cnpj).limit(1)
+      );
+      if (perfilComCnpj.docs.some(documento => documento.id !== idUsuario)) {
+        const erro = new Error("Já existe uma conta de clínica cadastrada com este CNPJ.");
+        erro.status = 409;
+        throw erro;
+      }
+      let referenciaReservaAntiga;
+      let reservaAntigaSnapshot;
+      if (alterandoCnpj && perfilAntes.cnpj) {
+        referenciaReservaAntiga = banco.collection(COLECAO_CNPJS).doc(criarHashCnpj(perfilAntes.cnpj));
+        reservaAntigaSnapshot = await transacao.get(referenciaReservaAntiga);
+      }
+      if (!reservaNovaSnapshot.exists) {
+        transacao.create(referenciaReservaNova, { uid: idUsuario, criadoEm: FieldValue.serverTimestamp() });
+      }
+      if (reservaAntigaSnapshot?.exists && reservaAntigaSnapshot.get("uid") === idUsuario) {
+        transacao.delete(referenciaReservaAntiga);
+      }
+    }
 
     const statusAnterior = perfilSnapshot.get("status");
     const mudouStatus = atualizacao.status && atualizacao.status !== statusAnterior;

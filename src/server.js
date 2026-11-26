@@ -5,7 +5,7 @@ const aplicacao = require("./app");
 const { inicializarFirebase, firebaseEstaConfigurado } = require("./config/firebase");
 const { iniciarSocket } = require("./sockets/chatSocket");
 
-const porta = Number(process.env.PORT) || 3000;
+const porta = Number(process.env.PORT) || 3333;
 const servidorHttp = http.createServer(aplicacao);
 
 try {

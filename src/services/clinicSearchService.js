@@ -1,6 +1,8 @@
 const { buscarExamePorCodigo } = require("./examsService");
 const { listarAtivos } = require("../repositories/conveniosRepository");
 const ofertasRepository = require("../repositories/examOffersRepository");
+const { geocodingEndereco } = require("./geocodingService");
+const examesRepository = require("../repositories/examsRepository");
 
 function validarCoordenadas(latitude, longitude) {
   return Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
@@ -19,7 +21,19 @@ function calcularDistanciaKm(a, b) {
 }
 
 async function obterCodigosExame(codigoExame) {
-  const exame = await buscarExamePorCodigo(codigoExame);
+  let exame;
+  try {
+    exame = await buscarExamePorCodigo(codigoExame);
+  } catch (falhaCatalogo) {
+    try {
+      const [catalogado] = await examesRepository.buscarExamesCatalogados([codigoExame]);
+      if (catalogado) exame = { codigo: catalogado.codigo, nome: catalogado.nome, tabela: catalogado.tabela || "TUSS" };
+      else throw falhaCatalogo;
+    } catch (falhaBanco) {
+      if (falhaBanco === falhaCatalogo) throw falhaCatalogo;
+      throw falhaBanco;
+    }
+  }
   if (!exame) {
     const erro = new Error("O código do exame não foi encontrado no catálogo TUSS.");
     erro.status = 404;

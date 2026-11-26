@@ -7,6 +7,7 @@ const cacheTuss = new Map();
 const { getJson, getJsonResponse, ErroApiExterna } = require("../utils/externalApi");
 const consultasTussEmAndamento = new Map();
 const { buscarEstabelecimentosPorCodigos } = require("./cnesService");
+const { buscarExameCatalogado, salvarExameCatalogo } = require("../repositories/examsRepository");
 
 function extrairLista(dados, servico) {
   if (Array.isArray(dados)) return validarRegistros(dados, servico);
@@ -80,13 +81,18 @@ async function buscarCatalogoExames({ termo, pagina = 1, limite = 20 }) {
 }
 
 async function buscarExamePorCodigo(codigo) {
+  const catalogado = await buscarExameCatalogado(codigo);
+  if (catalogado) return catalogado;
   const resultado = await buscarCatalogoExames({ termo: codigo, pagina: 1, limite: 100 });
   const exame = resultado.dados.find(item => String(item.codigo) === codigo);
-  return exame ? {
+  if (!exame) return null;
+  const normalizado = {
     codigo: String(exame.codigo),
     nome: String(exame.descricao),
     tabela: exame.tabela || "TUSS"
-  } : null;
+  };
+  await salvarExameCatalogo(normalizado);
+  return normalizado;
 }
 
 async function buscarProducaoSUS({ ano, competencia, municipio, cnes, limite = 100, deslocamento = 0 }) {

@@ -24,7 +24,10 @@ async function registrar(requisicao, resposta, proximaFuncao) {
     const dados = validarCadastro(requisicao.body);
     const resultado = await registrarUsuario(dados);
     return resposta.status(201).json({
-      message: "Cadastro criado. Verifique seu e-mail para ativar a conta.",
+      message: resultado.emailVerificacaoEnviado
+        ? "Cadastro criado. Verifique seu e-mail para ativar a conta."
+        : "Cadastro criado, mas não foi possível enviar o e-mail de verificação. Solicite um novo link antes de entrar.",
+      emailVerificacaoEnviado: resultado.emailVerificacaoEnviado,
       usuario: {
         uid: resultado.uid,
         id: resultado.uid,
@@ -67,7 +70,7 @@ async function login(requisicao, resposta, proximaFuncao) {
       token: credenciais.idToken,
       tokenType: "Bearer",
       expiresIn: Number(credenciais.expiresIn),
-      usuario: { id: perfil.uid, uid: perfil.uid, nome: obterNomeUsuario(perfil), email: perfil.email, tipo: perfil.tipo }
+      usuario: { id: perfil.uid, uid: perfil.uid, nome: obterNomeUsuario(perfil), email: perfil.email, tipo: perfil.tipo, status: perfil.status, administrador: credenciais.administrador === true }
     });
   } catch (erro) {
     if (erro.status === 401) return resposta.status(401).json({ code: "INVALID_CREDENTIALS", message: "E-mail ou senha inválidos." });
@@ -89,7 +92,7 @@ async function obterMinhaSessao(requisicao, resposta, proximaFuncao) {
     resposta.set("Cache-Control", "no-store");
     return resposta.status(200).json({ usuario: {
       id: perfil.uid, uid: perfil.uid, nome: obterNomeUsuario(perfil),
-      email: perfil.email, tipo: perfil.tipo, status: perfil.status
+      email: perfil.email, tipo: perfil.tipo, status: perfil.status, administrador: requisicao.usuario.administrador === true
     } });
   } catch (erro) { return proximaFuncao(erro); }
 }
@@ -116,7 +119,10 @@ async function criarSessao(requisicao, resposta, proximaFuncao) {
     const tokenCsrf = lerCookies(requisicao)[COOKIE_CSRF] || criarTokenCsrf();
     definirCookiesSessao(resposta, cookieSessao, tokenCsrf);
     resposta.set("Cache-Control", "no-store");
-    return resposta.status(200).json({ message: "Sessão iniciada.", csrfToken: tokenCsrf });
+    return resposta.status(200).json({ message: "Sessão iniciada.", csrfToken: tokenCsrf, usuario: {
+      id: perfil.uid, uid: perfil.uid, nome: obterNomeUsuario(perfil), email: perfil.email,
+      tipo: perfil.tipo, status: perfil.status, administrador: token.administrador === true
+    } });
   } catch (erro) {
     if (erro.code && erro.code.startsWith("auth/")) {
       return resposta.status(401).json({ message: "Não foi possível iniciar a sessão. Autentique-se novamente." });
