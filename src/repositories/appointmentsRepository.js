@@ -117,6 +117,19 @@ async function atualizarAgendamento({ usuario, id, acao, motivo }) {
     if (!clinicaPodeAgir && !clientePodeAgir && !clinicaPodeConcluir) throw erroAcessoNegado();
 
     const novoStatus = calcularNovoStatus(agendamento.status, acao);
+    const dataHora = agendamento.dataHora.toDate();
+    const agora = new Date();
+    if (["confirmar", "recusar", "cancelar"].includes(acao) && dataHora <= agora) {
+      const erro = new Error("O horário do agendamento já passou.");
+      erro.status = 409;
+      throw erro;
+    }
+    if (acao === "concluir" && dataHora > agora) {
+      const erro = new Error("O agendamento ainda não aconteceu.");
+      erro.status = 409;
+      throw erro;
+    }
+
     const atualizacao = {
       status: novoStatus,
       atualizadoEm: FieldValue.serverTimestamp(),
@@ -129,14 +142,16 @@ async function atualizarAgendamento({ usuario, id, acao, motivo }) {
     }
     transacao.update(referenciaAgendamento, atualizacao);
     if (acao === "recusar" || acao === "cancelar") {
-      transacao.delete(refHorario);
-      const refDisponibilidade = banco.collection(COLECAO_HORARIOS_DISPONIVEIS)
-        .doc(require("./availabilityRepository").idHorario(agendamento.clinicaUid, agendamento.dataHora));
-      transacao.create(refDisponibilidade, {
-        uidClinica: agendamento.clinicaUid,
-        dataHora: agendamento.dataHora,
-        criadoEm: FieldValue.serverTimestamp()
-      });
+      if (dataHora > agora) {
+        transacao.delete(refHorario);
+        const refDisponibilidade = banco.collection(COLECAO_HORARIOS_DISPONIVEIS)
+          .doc(require("./availabilityRepository").idHorario(agendamento.clinicaUid, agendamento.dataHora));
+        transacao.create(refDisponibilidade, {
+          uidClinica: agendamento.clinicaUid,
+          dataHora: agendamento.dataHora,
+          criadoEm: FieldValue.serverTimestamp()
+        });
+      }
     }
     return true;
   });

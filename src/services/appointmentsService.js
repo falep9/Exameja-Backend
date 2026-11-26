@@ -1,5 +1,6 @@
 const { Timestamp } = require("firebase-admin/firestore");
 const { buscarPerfil } = require("../repositories/usersRepository");
+const examOffersRepository = require("../repositories/examOffersRepository");
 const reviewsRepository = require("../repositories/reviewsRepository");
 const {
   criarAgendamento: salvarAgendamento,
@@ -66,15 +67,11 @@ async function criarAgendamento(usuario, corpo = {}) {
   if (!corpo || typeof corpo !== "object" || Array.isArray(corpo)) {
     throw criarErro("O corpo da requisição deve ser um objeto JSON.", 400);
   }
-  const { clinicaUid, nomeExame, codigoExame, dataHora } = corpo;
+  const { clinicaUid, codigoExame, dataHora } = corpo;
   if (typeof clinicaUid !== "string" || !clinicaUid.trim()) {
     throw criarErro("Informe um identificador válido para a clínica.", 400);
   }
-  if (typeof nomeExame !== "string" || nomeExame.trim().length < 2 || nomeExame.trim().length > 120) {
-    throw criarErro("O nome do exame deve conter de 2 a 120 caracteres.", 400);
-  }
-  if (codigoExame !== undefined
-    && (typeof codigoExame !== "string" || codigoExame.length > 40)) {
+  if (typeof codigoExame !== "string" || !codigoExame.trim() || codigoExame.length > 40) {
     throw criarErro("O código do exame deve ser uma string de até 40 caracteres.", 400);
   }
   const dataNormalizada = validarDataHora(dataHora);
@@ -86,12 +83,16 @@ async function criarAgendamento(usuario, corpo = {}) {
   if (perfilClinica.status !== "aprovada") {
     throw criarErro("A clínica ainda não foi aprovada.", 409);
   }
+  const codigoValidado = codigoExame.trim();
+  const ofertas = await examOffersRepository.listarOfertasClinica(uidClinica);
+  const oferta = ofertas.find(item => item.codigoExame === codigoValidado && item.ativa === true);
+  if (!oferta) throw criarErro("Exame não oferecido por esta clínica.", 404);
 
   return salvarAgendamento({
     clienteUid: usuario.uid,
     clinicaUid: uidClinica,
-    nomeExame: nomeExame.trim(),
-    ...(codigoExame !== undefined ? { codigoExame: codigoExame.trim() } : {}),
+    nomeExame: oferta.nomeExame,
+    codigoExame: codigoValidado,
     dataHora: Timestamp.fromDate(dataNormalizada),
     // O identificador é calculado sem consultar ou criar uma conversa.
     conversaId: `${usuario.uid}_${uidClinica}`

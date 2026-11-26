@@ -14,6 +14,6 @@ rotas.use(autenticarUsuario, exigirContaAtiva);
 rotas.post("/", exigirClinicaAprovada, criar);
 rotas.get("/", listar);
 rotas.get("/:id", buscarPorId);
-rotas.put("/:id", exigirClinicaAprovada, atualizar);
+rotas.put("/:id", atualizar);
 
 module.exports = rotas;
