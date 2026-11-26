@@ -126,18 +126,21 @@ function validarDominioCorporativo(email, dominio) {
 function validarCadastro(dados) {
   const tipo = dados?.tipo;
   if (tipo === TIPOS_USUARIO.CLIENTE) {
-    validarCorpo(dados, ["tipo", "nome", "email", "senha", "cpf", "telefone"]);
+    validarCorpo(dados, ["tipo", "nome", "email", "senha", "cpf", "telefone", "convenios"]);
+    const { validarIdsConvenios } = require("./conveniosValidator");
     return {
       tipo,
       nome: textoObrigatorio(dados.nome, "nome", 120),
       email: validarEmail(dados.email),
       senha: validarSenha(dados.senha),
       cpf: validarDocumento(dados.cpf, "CPF", 11),
-      telefone: validarTelefone(dados.telefone)
+      telefone: validarTelefone(dados.telefone),
+      convenios: validarIdsConvenios(dados.convenios ?? [], { minimo: 1, maximo: 1 })
     };
   }
   if (tipo === TIPOS_USUARIO.CLINICA) {
-    validarCorpo(dados, ["tipo", "email", "senha", "dominioCorporativo", "razaoSocial", "nomeFantasia", "cnpj", "cnes", "telefone", "endereco", "declaracaoVinculo"]);
+    validarCorpo(dados, ["tipo", "email", "senha", "dominioCorporativo", "razaoSocial", "nomeFantasia", "cnpj", "cnes", "telefone", "endereco", "declaracaoVinculo", "conveniosAceitos"]);
+    const { validarIdsConvenios } = require("./conveniosValidator");
     const email = validarEmail(dados.email);
     const cadastro = {
       tipo,
@@ -149,7 +152,8 @@ function validarCadastro(dados) {
       cnpj: validarDocumento(dados.cnpj, "CNPJ", 14),
       telefone: validarTelefone(dados.telefone),
       endereco: textoObrigatorio(dados.endereco, "endereco", 500),
-      declaracaoVinculo: textoObrigatorio(dados.declaracaoVinculo, "declaracaoVinculo", 5000)
+      declaracaoVinculo: textoObrigatorio(dados.declaracaoVinculo, "declaracaoVinculo", 5000),
+      conveniosAceitos: validarIdsConvenios(dados.conveniosAceitos, { minimo: 5, maximo: 10 })
     };
     if (dados.cnes !== undefined && dados.cnes !== "") {
       if (typeof dados.cnes !== "string") {

@@ -19,6 +19,7 @@ const rotasAdministracaoUsuarios = require("./routes/adminUsersRoutes");
 const rotasAdministracaoDenuncias = require("./routes/adminReportsRoutes");
 const rotasDenuncias = require("./routes/reportsRoutes");
 const { obterBancoFirestore } = require("./config/firebase");
+const criarLimitador = require("./middleware/limitarRequisicoes");
 
 const aplicacao = express();
 const saltosProxyConfigurados = process.env.TRUST_PROXY_HOPS;

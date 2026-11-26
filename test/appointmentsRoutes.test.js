@@ -102,7 +102,7 @@ test("publica detalhes da clínica sem exigir sessão", async () => {
 test("cria agendamento com cookie e CSRF e bloqueia POST sem CSRF", async () => {
   const corpo = {
     clinicaUid: "clinica-teste",
-    nomeExame: "Hemograma",
+    codigoExame: "123",
     dataHora: new Date(Date.now() + 60 * 60 * 1000).toISOString()
   };
   const cookie = `${COOKIE_SESSAO}=sessao-teste; ${COOKIE_CSRF}=csrf-teste`;

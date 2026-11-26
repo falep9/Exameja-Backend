@@ -72,7 +72,12 @@ async function buscar(requisicao, resposta, proximaFuncao) {
     }
     if (convenioId) {
       const [convenio] = await buscarPorIds([convenioId]);
-      if (!convenio?.ativo) throw erroValidacao("O convênio selecionado não se encontra ativo.");
+      if (!convenio?.ativo) {
+        const erro = erroValidacao("O convênio selecionado não está ativo. Escolha outro convênio para continuar.");
+        erro.status = 409;
+        erro.codigoPublico = "INSURANCE_INACTIVE";
+        throw erro;
+      }
     }
     const ordenar = requisicao.query.ordenar === undefined ? "distancia" : requisicao.query.ordenar;
     if (!new Set(["distancia", "preco"]).has(ordenar)) throw erroValidacao("'ordenar' deve ser 'distancia' ou 'preco'.");

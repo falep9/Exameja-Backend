@@ -12,11 +12,11 @@ function validarCorpoObjeto(corpo, camposPermitidos) {
   if (campoDesconhecido) throw erroValidacao(`O campo '${campoDesconhecido}' não é permitido.`);
 }
 
-function validarIdsConvenios(valor) {
-  if (!Array.isArray(valor) || valor.length > 10
+function validarIdsConvenios(valor, { minimo = 0, maximo = 10 } = {}) {
+  if (!Array.isArray(valor) || valor.length < minimo || valor.length > maximo
     || valor.some(id => typeof id !== "string" || id.length > 80
       || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id))) {
-    throw erroValidacao("Informe até 10 IDs de convênios válidos.");
+    throw erroValidacao(`Informe de ${minimo} a ${maximo} IDs de convênios válidos.`);
   }
   if (new Set(valor).size !== valor.length) throw erroValidacao("Não repita IDs de convênio.");
   return valor;

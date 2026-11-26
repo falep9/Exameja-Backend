@@ -6,8 +6,13 @@ const obterBancoFirestoreOriginal = firebaseConfig.obterBancoFirestore;
 let bancoFalso;
 firebaseConfig.obterBancoFirestore = () => bancoFalso;
 const appointmentsRepository = require("../src/repositories/appointmentsRepository");
+const examOffersRepository = require("../src/repositories/examOffersRepository");
 
 const buscarPerfilOriginal = usersRepository.buscarPerfil;
+const listarOfertasClinicaOriginal = examOffersRepository.listarOfertasClinica;
+examOffersRepository.listarOfertasClinica = async () => [
+  { codigoExame: "HEM", nomeExame: "Hemograma", ativa: true }
+];
 const originaisRepositorio = {
   criar: appointmentsRepository.criarAgendamento,
   listar: appointmentsRepository.listarAgendamentos,
@@ -62,6 +67,7 @@ const {
 
 after(() => {
   usersRepository.buscarPerfil = buscarPerfilOriginal;
+  examOffersRepository.listarOfertasClinica = listarOfertasClinicaOriginal;
   firebaseConfig.obterBancoFirestore = obterBancoFirestoreOriginal;
   appointmentsRepository.criarAgendamento = originaisRepositorio.criar;
   appointmentsRepository.listarAgendamentos = originaisRepositorio.listar;
@@ -80,7 +86,6 @@ function prepararCriacao({ tipo = "cliente", clinica = { tipo: "clinica", status
     usuario: { uid: "cliente-1", tipo },
     body: {
       clinicaUid: "clinica-1",
-      nomeExame: " Hemograma ",
       codigoExame: " HEM ",
       dataHora: data.toISOString()
     }
@@ -191,7 +196,7 @@ test("cria agendamento normalizado com status pendente e responde 201", async ()
 test("responde 400 para data passada, nome curto e data inválida", async () => {
   for (const alterar of [
     corpo => { corpo.dataHora = new Date(Date.now() - 60000).toISOString(); },
-    corpo => { corpo.nomeExame = "a"; },
+    corpo => { corpo.codigoExame = ""; },
     corpo => { corpo.dataHora = "2026-02-30T12:00:00Z"; }
   ]) {
     const requisicao = prepararCriacao();

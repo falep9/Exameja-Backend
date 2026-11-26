@@ -85,7 +85,25 @@ async function listarAgendamentos({ campoUsuario, usuarioUid, limite, cursor }) 
   }
 
   const snapshot = await consulta.limit(limite + 1).get();
-  const documentos = snapshot.docs.slice(0, limite);
+  let documentos = snapshot.docs.slice(0, limite);
+  const agora = Date.now();
+  const vencidos = documentos.filter(documento => documento.get("status") === "pendente"
+    && documento.get("dataHora")?.toMillis() <= agora);
+  if (vencidos.length) {
+    await Promise.all(vencidos.map(documento => banco.runTransaction(async transacao => {
+      const atual = await transacao.get(documento.ref);
+      if (atual.exists && atual.get("status") === "pendente"
+        && atual.get("dataHora")?.toMillis() <= Date.now()) {
+        transacao.update(documento.ref, {
+          status: "expirado",
+          motivo: "O horário passou sem confirmação.",
+          atualizadoEm: FieldValue.serverTimestamp()
+        });
+      }
+    })));
+    const atualizados = await banco.getAll(...documentos.map(documento => documento.ref));
+    documentos = atualizados.filter(documento => documento.exists);
+  }
   return {
     agendamentos: documentos.map(documento => ({ id: documento.id, ...documento.data() })),
     proximoCursor: snapshot.docs.length > limite ? documentos[documentos.length - 1].id : null
@@ -93,7 +111,21 @@ async function listarAgendamentos({ campoUsuario, usuarioUid, limite, cursor }) 
 }
 
 async function buscarAgendamento(id) {
-  const documento = await obterBancoFirestore().collection(COLECAO_AGENDAMENTOS).doc(id).get();
+  const banco = obterBancoFirestore();
+  const referencia = banco.collection(COLECAO_AGENDAMENTOS).doc(id);
+  await banco.runTransaction(async transacao => {
+    const documento = await transacao.get(referencia);
+    if (!documento.exists || documento.get("status") !== "pendente") return;
+    const dataHora = documento.get("dataHora");
+    if (dataHora?.toMillis() <= Date.now()) {
+      transacao.update(referencia, {
+        status: "expirado",
+        motivo: "O horário passou sem confirmação.",
+        atualizadoEm: FieldValue.serverTimestamp()
+      });
+    }
+  });
+  const documento = await referencia.get();
   return documento.exists ? { id: documento.id, ...documento.data() } : null;
 }
 
@@ -116,9 +148,17 @@ async function atualizarAgendamento({ usuario, id, acao, motivo }) {
       && usuario.tipo === "clinica" && usuario.uid === agendamento.clinicaUid;
     if (!clinicaPodeAgir && !clientePodeAgir && !clinicaPodeConcluir) throw erroAcessoNegado();
 
-    const novoStatus = calcularNovoStatus(agendamento.status, acao);
     const dataHora = agendamento.dataHora.toDate();
     const agora = new Date();
+    if (agendamento.status === "pendente" && dataHora <= agora) {
+      transacao.update(referenciaAgendamento, {
+        status: "expirado",
+        motivo: "O horário passou sem confirmação.",
+        atualizadoEm: FieldValue.serverTimestamp()
+      });
+      return { expirado: true };
+    }
+    const novoStatus = calcularNovoStatus(agendamento.status, acao);
     if (["confirmar", "recusar", "cancelar"].includes(acao) && dataHora <= agora) {
       const erro = new Error("O horário do agendamento já passou.");
       erro.status = 409;

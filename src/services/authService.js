@@ -6,12 +6,20 @@ const { criarHashCnpj } = require("../utils/cnpj");
 const { enviarVerificacaoEmail } = require("./firebaseEmailService");
 const { consultarCnpj, normalizarRazaoSocial } = require("./cnpjService");
 const { geocodingEndereco } = require("./geocodingService");
+const conveniosRepository = require("../repositories/conveniosRepository");
 
 async function registrar(dados) {
   const auth = firebaseConfig.obterAutenticacaoFirebase();
   let usuario;
   let operacaoConcluida = false;
   try {
+    const idsConvenios = dados.convenios || dados.conveniosAceitos || [];
+    const catalogoConvenios = await conveniosRepository.buscarPorIds(idsConvenios);
+    if (catalogoConvenios.length !== idsConvenios.length || catalogoConvenios.some(convenio => !convenio.ativo)) {
+      const erro = new Error("Selecione somente convênios ativos do catálogo.");
+      erro.status = 400;
+      throw erro;
+    }
     const cpfHash = dados.tipo === "cliente" ? criarHashCpf(dados.cpf) : null;
     const cnpjHash = dados.tipo === "clinica" ? criarHashCnpj(dados.cnpj) : null;
     let cadastroCnpj = null;
@@ -45,7 +53,7 @@ async function registrar(dados) {
     if (dados.tipo === "cliente") {
       perfil.nome = dados.nome;
       perfil.telefone = dados.telefone;
-      perfil.convenios = [];
+      perfil.convenios = dados.convenios;
     } else {
       Object.assign(perfil, {
         dominioCorporativo: dados.dominioCorporativo,
@@ -62,7 +70,7 @@ async function registrar(dados) {
         telefone: dados.telefone,
         endereco: dados.endereco
       });
-      perfil.conveniosAceitos = [];
+      perfil.conveniosAceitos = dados.conveniosAceitos;
       if (dados.cnes) perfil.cnes = dados.cnes;
       const coordenadas = await geocodificacaoPromise;
       if (coordenadas?.encontrado) {
@@ -74,14 +82,21 @@ async function registrar(dados) {
       }
     }
     await criarPerfil(usuario.uid, perfil, cpfHash, cnpjHash);
-    await enviarVerificacaoEmail(usuario.uid);
     operacaoConcluida = true;
+    let emailVerificacaoEnviado = true;
+    try {
+      await enviarVerificacaoEmail(usuario.uid);
+    } catch {
+      // O cadastro permanece válido; a pessoa pode solicitar outro link depois.
+      emailVerificacaoEnviado = false;
+    }
     return {
       uid: usuario.uid,
       email: usuario.email,
       tipo: dados.tipo,
       nome: dados.nome || dados.nomeFantasia,
-      status: perfil.status
+      status: perfil.status,
+      emailVerificacaoEnviado
     };
   } catch (erro) {
     if (usuario && !operacaoConcluida) {
@@ -168,7 +183,7 @@ async function autenticar(email, senha) {
       erro.codigoPublico = "ACCOUNT_DISABLED";
       throw erro;
     }
-    return { ...dados, emailVerified: usuarioFirebase.emailVerified === true };
+    return { ...dados, emailVerified: usuarioFirebase.emailVerified === true, administrador: usuarioFirebase.customClaims?.administrador === true };
   } catch (falha) {
     if (falha.status) throw falha;
     if (falha.code === "auth/user-not-found") {
