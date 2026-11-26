@@ -5,7 +5,10 @@ const API_CNPJ = "https://brasilapi.com.br/api/cnpj/v1";
 async function consultarCnpj(cnpj) {
   let dados;
   try {
-    dados = await getJson(`${API_CNPJ}/${encodeURIComponent(cnpj)}`, { service: "a consulta de CNPJ da BrasilAPI" });
+    dados = await getJson(`${API_CNPJ}/${encodeURIComponent(cnpj)}`, {
+      service: "a consulta de CNPJ da BrasilAPI",
+      headers: { "User-Agent": "ExameJa/1.0" }
+    });
   } catch (erro) {
     if (erro.status === 404) return { encontrado: false };
     throw erro;
