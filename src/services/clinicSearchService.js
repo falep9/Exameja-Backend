@@ -1,4 +1,5 @@
 const { buscarExamePorCodigo } = require("./examsService");
+const { geocodingEndereco } = require("./geocodingService");
 const { listarAtivos } = require("../repositories/conveniosRepository");
 const ofertasRepository = require("../repositories/examOffersRepository");
 
