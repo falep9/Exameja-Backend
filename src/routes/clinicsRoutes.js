@@ -5,6 +5,7 @@ const exigirClinicaAprovada = require("../middleware/exigirClinicaAprovada");
 const { sugerirPorConvenio, reenviarParaAnalise } = require("../controllers/clinicsController");
 const controladorBusca = require("../controllers/clinicSearchController");
 const controladorDetalhes = require("../controllers/clinicDetailsController");
+const controladorMapa = require("../controllers/clinicMapController");
 const controladorOfertas = require("../controllers/clinicOffersController");
 const criarLimitador = require("../middleware/limitarRequisicoes");
 const disponibilidade = require("../controllers/availabilityController");
@@ -16,6 +17,11 @@ rotas.get("/search", criarLimitador({
   maximo: Number(process.env.CLINIC_SEARCH_MAX_PER_MINUTE) || 30,
   mensagem: "Muitas buscas em pouco tempo. Aguarde um minuto e tente novamente."
 }), controladorBusca.buscar);
+rotas.get("/map", criarLimitador({
+  janelaMs: 60 * 1000,
+  maximo: Number(process.env.CLINIC_SEARCH_MAX_PER_MINUTE) || 30,
+  mensagem: "Muitas consultas ao mapa em pouco tempo. Aguarde um minuto e tente novamente."
+}), controladorMapa.listar);
 rotas.get("/suggestions", autenticarUsuario, exigirContaAtiva, exigirClinicaAprovada, sugerirPorConvenio);
 rotas.get("/me/exams", autenticarUsuario, exigirContaAtiva, exigirClinicaAprovada, controladorOfertas.listar);
 rotas.get("/me/exams/:codigoExame/history", autenticarUsuario, exigirContaAtiva, exigirClinicaAprovada, controladorOfertas.listarHistorico);

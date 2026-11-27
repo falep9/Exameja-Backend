@@ -171,4 +171,4 @@ async function buscarClinicas({
   };
 }
 
-module.exports = { buscarClinicas, calcularDistanciaKm, estaNaCaixaDeBusca };
+module.exports = { buscarClinicas, calcularDistanciaKm, estaNaCaixaDeBusca, obterCoordenadasClinica };

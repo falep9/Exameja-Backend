@@ -298,8 +298,19 @@ async function marcarNotificacaoComoLida(uidUsuario, idNotificacao) {
   return atualizada;
 }
 
+async function listarClinicasAprovadas(limite = 500) {
+  const banco = obterBancoFirestore();
+  const snapshot = await banco.collection(COLECAO_USUARIOS)
+    .where("tipo", "==", "clinica")
+    .where("status", "==", "aprovada")
+    .limit(limite)
+    .get();
+  return snapshot.docs.map(documento => ({ uid: documento.id, ...documento.data() }));
+}
+
 module.exports = {
   buscarPerfil,
+  listarClinicasAprovadas,
   salvarCoordenadasClinica,
   criarPerfil,
   excluirPerfil,

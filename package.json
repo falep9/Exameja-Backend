@@ -13,7 +13,8 @@
     "migrate:cpf-hashes": "node scripts/migrarHashesCpfLegados.js",
     "admin:claim": "node scripts/gerenciarAdministrador.js",
     "clinics:geocode": "node scripts/geocodificarClinicas.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "convenios:normalizar": "node scripts/normalizarIdsConvenios.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
