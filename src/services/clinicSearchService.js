@@ -3,6 +3,7 @@ const { listarAtivos } = require("../repositories/conveniosRepository");
 const ofertasRepository = require("../repositories/examOffersRepository");
 const { geocodingEndereco } = require("./geocodingService");
 const examesRepository = require("../repositories/examsRepository");
+const usersRepository = require("../repositories/usersRepository");
 
 function validarCoordenadas(latitude, longitude) {
   return Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
@@ -61,6 +62,22 @@ function obterCoordenadasClinica(clinica) {
   return { latitude: clinica.latitude, longitude: clinica.longitude };
 }
 
+async function obterCoordenadasAtuais(clinica) {
+  if (validarCoordenadas(clinica.latitude, clinica.longitude)
+    && clinica.enderecoCoordenadas === clinica.endereco) {
+    return { latitude: clinica.latitude, longitude: clinica.longitude };
+  }
+  if (typeof clinica.endereco !== "string" || !clinica.endereco.trim()) return null;
+  try {
+    const resultado = await geocodingEndereco(`${clinica.endereco.trim()}, Brasil`);
+    if (!resultado.encontrado || !validarCoordenadas(resultado.latitude, resultado.longitude)) return null;
+    await usersRepository.salvarCoordenadasClinica(clinica.uid, clinica.endereco, resultado.latitude, resultado.longitude);
+    return { latitude: resultado.latitude, longitude: resultado.longitude };
+  } catch {
+    return null;
+  }
+}
+
 function estaNaCaixaDeBusca(origem, destino, raioKm) {
   // A caixa é um filtro rápido e conservador; Haversine decide o raio exato.
   const grausLatitude = raioKm / 110;
@@ -113,10 +130,10 @@ async function buscarClinicas({
     return { exames: selecaoExame.exames, localizacao, resultados: [], total: 0, clinicasSemCoordenadas: 0, limit: limite, offset: deslocamento };
   }
   const [perfisComCoordenadas, catalogoConvenios] = await Promise.all([
-    [...new Set(ofertasAplicaveis.map(oferta => oferta.uidClinica))].map(uid => {
+    Promise.all([...new Set(ofertasAplicaveis.map(oferta => oferta.uidClinica))].map(async uid => {
       const clinica = clinicasPorUid.get(uid);
-      return { uid, clinica, coordenadas: obterCoordenadasClinica(clinica) };
-    }),
+      return { uid, clinica, coordenadas: await obterCoordenadasAtuais(clinica) };
+    })),
     listarAtivos()
   ]);
   const clinicasGeo = new Map(perfisComCoordenadas.map(item => [item.uid, item]));
